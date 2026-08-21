@@ -13,7 +13,7 @@
 - 只使用 Pi coding agent 的公开导出，不引用 `dist` 或内部源码
 - 运行时依赖写入插件自己的 `dependencies`
 - Pi coding agent 同时写入 `peerDependencies` 和 `devDependencies`
-- 源码注释使用简体中文，末尾不加句号；文档使用简体中文
+- 源码注释使用简体中文，函数、字段、文件都需要使用中文注释进行简短的解释，复杂的逻辑也需要进行解释，末尾不加句号；文档使用简体中文
 - `.pi/skills/` 仅供开发代理使用，`docs/research/` 保存调研报告
 
 ## 测试与发布
