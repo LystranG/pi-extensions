@@ -1,7 +1,8 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-const SEPARATOR = "  ";
+const SEPARATOR = " · ";
+const INPUT_PROMPT = "❯ ";
 
 export interface ContextUsageValue {
   tokens: number | null;
@@ -39,6 +40,33 @@ export interface SessionUsageTotals extends TokenUsageValue {
   latestCacheHitRate?: number;
 }
 
+// 为默认编辑器保留完整交互能力，只替换输入行左侧的提示符
+class PromptEditor extends CustomEditor {
+  private readonly prompt: string;
+
+  constructor(
+    tui: ConstructorParameters<typeof CustomEditor>[0],
+    theme: ConstructorParameters<typeof CustomEditor>[1],
+    keybindings: ConstructorParameters<typeof CustomEditor>[2],
+    prompt: string,
+  ) {
+    super(tui, theme, keybindings);
+    this.prompt = prompt;
+  }
+
+  override render(width: number): string[] {
+    const promptWidth = visibleWidth(INPUT_PROMPT);
+    if (width <= promptWidth) return super.render(width);
+
+    const lines = super.render(width - promptWidth);
+    return lines.map((line, index) => {
+      if (index === 1) return `${this.prompt}${line}`;
+      if (index === 0 || line.includes("─")) return `${line}${"─".repeat(promptWidth)}`;
+      return `${" ".repeat(promptWidth)}${line}`;
+    });
+  }
+}
+
 export function formatCwdForStatusline(cwd: string, home = process.env.HOME): string {
   if (!home) return cwd;
   if (cwd === home) return "~";
@@ -53,7 +81,7 @@ function formatThousands(value: number): string {
 
 export function formatContextUsage(usage: ContextUsageValue | undefined): string | undefined {
   if (!usage || usage.tokens === null || usage.contextWindow <= 0 || usage.percent === null) return undefined;
-  return `${formatThousands(usage.tokens)}/${formatThousands(usage.contextWindow)} (${Math.round(usage.percent)}%)`;
+  return `${formatThousands(usage.tokens)}/${formatThousands(usage.contextWindow)} ${Math.round(usage.percent)}%`;
 }
 
 // 使用圆形阶段图标表达上下文进度
@@ -133,7 +161,7 @@ export function formatSessionUsage(totals: SessionUsageTotals): string | undefin
     parts.push(`W${formatTokenCount(totals.cacheWrite)}`);
     parts.push(`R${formatTokenCount(totals.cacheRead)}`);
     if (totals.latestCacheHitRate !== undefined) {
-      parts.push(`CH${totals.latestCacheHitRate.toFixed(1)}%`);
+      parts.push(`󰆼${totals.latestCacheHitRate.toFixed(1)}%`);
     }
   }
   return parts.length > 0 ? parts.join(" ") : undefined;
@@ -224,7 +252,7 @@ export function formatGitChanges(
   if (changes.untracked > 0) statuses.push(colorize("accent", `!${changes.untracked}`));
   if (changes.unstaged > 0) statuses.push(colorize("warning", `!${changes.unstaged}`));
   if (changes.staged > 0) statuses.push(colorize("warning", `+${changes.staged}`));
-  return statuses.length > 0 ? statuses.join("") : undefined;
+  return statuses.length > 0 ? statuses.join(" ") : undefined;
 }
 
 export default function statuslineExtension(pi: ExtensionAPI): void {
@@ -258,6 +286,10 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
     if (ctx.mode !== "tui") return;
 
     // 自定义 footer 统一处理 Git、上下文和扩展状态
+    ctx.ui.setEditorComponent((tui, theme, keybindings) => {
+      const prompt = ctx.ui.theme.fg("accent", INPUT_PROMPT);
+      return new PromptEditor(tui, theme, keybindings, prompt);
+    });
     refreshGitStatus = () => void updateGitStatus(ctx.cwd);
     gitChanges = { untracked: 0, unstaged: 0, staged: 0 };
     void updateGitStatus(ctx.cwd);
@@ -291,13 +323,13 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const secondaryStatuses = groupedStatuses.secondary;
 
           const fields: StatuslineFields = {
-            directory: theme.fg("accent", ` ${directory}`),
+            directory: theme.fg("accent", `󰉋 ${directory}`),
             session: sessionName ? theme.fg("muted", `◈ ${sessionName}`) : undefined,
             branch: branch ? theme.fg("success", ` ${branch}`) : undefined,
             git: formatGitChanges(gitChanges, (color, text) => theme.fg(color, text)),
-            model: ctx.model ? theme.fg("muted", `◆ ${ctx.model.provider}/${ctx.model.id}`) : undefined,
-            thinking: ctx.thinkingLevel ? theme.fg("muted", `◉ ${ctx.thinkingLevel}`) : undefined,
-            context: contextStatus,
+            model: ctx.model ? theme.fg("muted", `󰚩 ${ctx.model.provider}/${ctx.model.id}`) : undefined,
+            thinking: ctx.thinkingLevel ? theme.fg("muted", `󰗆 ${ctx.thinkingLevel}`) : undefined,
+            context: contextStatus ? theme.fg("muted", `󰍛 ${contextStatus}`) : undefined,
             statuses: groupedStatuses.primary,
             sessionUsage: sessionUsage ? theme.fg("muted", sessionUsage) : undefined,
             secondaryStatuses,
