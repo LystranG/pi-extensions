@@ -8,6 +8,7 @@ import {
   formatGitChanges,
   formatSessionUsage,
   formatTokenCount,
+  groupExtensionStatuses,
   layoutStatusline,
   layoutStatuslineLines,
   normalizeExtensionStatus,
@@ -98,6 +99,19 @@ describe("git status", () => {
 });
 
 describe("extension status", () => {
+  test("groups MCP before pi-lens LSP on the second line", () => {
+    expect(
+      groupExtensionStatuses([
+        ["pi-lens-lsp", "LSP Active: typescript"],
+        ["other", "Other status"],
+        ["mcp", "🔌 MCP: 3 servers enabled"],
+      ]),
+    ).toEqual({
+      primary: ["Other status"],
+      secondary: ["󰒍 MCP: 3 servers enabled", "LSP Active: typescript"],
+    });
+  });
+
   test("replaces only the pi-mcp-adapter status icon", () => {
     expect(normalizeExtensionStatus("mcp", "🔌 MCP: 3 servers")).toBe("󰒍 MCP: 3 servers");
     expect(normalizeExtensionStatus("mcp", "\u001b[31m🔌 MCP: 3 servers\u001b[39m")).toBe(

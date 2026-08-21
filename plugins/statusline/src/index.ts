@@ -194,6 +194,22 @@ export function normalizeExtensionStatus(key: string, value: string): string {
   return key === "mcp" ? status.replace(/(?:🔌 )?MCP:/, "󰒍 MCP:") : status;
 }
 
+export function groupExtensionStatuses(entries: ReadonlyArray<readonly [string, string]>): {
+  primary: string[];
+  secondary: string[];
+} {
+  const secondaryKeys = new Set(["mcp", "pi-lens-lsp"]);
+  const primary = entries
+    .filter(([key]) => !secondaryKeys.has(key))
+    .map(([key, value]) => normalizeExtensionStatus(key, value))
+    .filter(Boolean);
+  const secondary = ["mcp", "pi-lens-lsp"].flatMap((statusKey) => {
+    const entry = entries.find(([key]) => key === statusKey);
+    return entry ? [normalizeExtensionStatus(entry[0], entry[1])] : [];
+  });
+  return { primary, secondary };
+}
+
 export function formatGitChanges(
   changes: GitChangeCounts,
   colorize: (color: "accent" | "warning", text: string) => string,
@@ -258,16 +274,10 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
           const sessionUsage = formatSessionUsage(calculateSessionUsage(ctx.sessionManager.getEntries()));
           const extensionStatuses = [...footerData.getExtensionStatuses().entries()];
-          const statuses = extensionStatuses
-            .filter(([key]) => key !== "mcp")
-            .map(([key, value]) => normalizeExtensionStatus(key, value))
-            .filter(Boolean);
+          const groupedStatuses = groupExtensionStatuses(extensionStatuses);
           const secondaryStatuses = [
             ...(sessionUsage ? [theme.fg("muted", sessionUsage)] : []),
-            ...extensionStatuses
-              .filter(([key]) => key === "mcp")
-              .map(([key, value]) => normalizeExtensionStatus(key, value))
-              .filter(Boolean),
+            ...groupedStatuses.secondary,
           ];
 
           const fields: StatuslineFields = {
@@ -284,7 +294,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
                     `${contextProgressIcon(contextUsage.percent)} ${usage}`,
                   )
                 : undefined,
-            statuses,
+            statuses: groupedStatuses.primary,
             secondaryStatuses,
           };
 
