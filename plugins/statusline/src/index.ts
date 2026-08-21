@@ -43,6 +43,7 @@ function fitCore(directory: string, context: string | undefined, width: number):
   if (!context) return truncateToWidth(directory, width);
   if (visibleWidth(context) >= width) return truncateToWidth(context, width);
 
+  // 窄屏时优先保留目录和上下文
   const directoryWidth = width - visibleWidth(context) - visibleWidth(SEPARATOR);
   if (directoryWidth <= 0) return truncateToWidth(context, width);
   return `${truncateToWidth(directory, directoryWidth)}${SEPARATOR}${context}`;
@@ -85,6 +86,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     if (ctx.mode !== "tui") return;
 
+    // 自定义 footer 统一处理 Git、上下文和扩展状态
     ctx.ui.setFooter((tui, theme, footerData) => {
       const renderFooter = () => tui.requestRender();
       requestRender = renderFooter;

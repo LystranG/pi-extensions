@@ -29,6 +29,7 @@ function errorDetail(error: unknown): string {
 }
 
 function resultFailure(result: SerenaHookResult): string | undefined {
+  // 将外部命令失败转换为可读的单次警告
   if (result.code === 0 && !result.killed) return undefined;
   const stderr = result.stderr?.replaceAll(/\s+/g, " ").trim();
   if (stderr) return stderr.slice(0, 200);
@@ -58,6 +59,7 @@ export class SerenaHooksController {
   }
 
   async #run(action: SerenaHookAction, warn: SerenaHookWarning): Promise<void> {
+    // 命令失败不阻断 Pi，但按动作去重提示
     let failure: string | undefined;
     try {
       failure = resultFailure(await this.#execute(action));
