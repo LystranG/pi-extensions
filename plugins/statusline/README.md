@@ -3,7 +3,7 @@
 为 Pi coding agent 提供单行自定义状态栏，显示当前目录、session 名称、Git 分支、模型、思考等级和上下文占用。
 
 ```text
-◫ pi-extensions  ◈ 修复状态栏   main  ◆ openai/gpt-5  ◉ high  ◔ 42k/128k (33%)
+ pi-extensions  ◈ 修复状态栏   main  ◆ openai/gpt-5  ◉ high  ◔ 42k/128k (33%)
 ```
 
 ## 要求

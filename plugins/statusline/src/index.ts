@@ -132,7 +132,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const statuses = [...footerData.getExtensionStatuses().values()].map(normalizeStatus).filter(Boolean);
 
           const fields: StatuslineFields = {
-            directory: theme.fg("accent", `◫ ${directoryName}`),
+            directory: theme.fg("accent", ` ${directoryName}`),
             session: sessionName ? theme.fg("muted", `◈ ${sessionName}`) : undefined,
             branch: branch ? theme.fg("muted", ` ${branch}`) : undefined,
             model: ctx.model ? theme.fg("muted", `◆ ${ctx.model.provider}/${ctx.model.id}`) : undefined,
