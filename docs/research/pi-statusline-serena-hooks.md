@@ -61,7 +61,9 @@
 <目录>  <session 名称>  <git 分支>  <provider/id>  <thinking>  <tokens/contextWindow percent>
 ```
 
-窄屏必须保留“目录 + 上下文”；空间不足时依次隐藏 thinking level、模型、Git 分支，最后对保留内容使用 `truncateToWidth()`。其他扩展通过 `footerData.getExtensionStatuses()` 设置的状态也必须纳入布局；其优先级不能高于本插件已确认的窄屏核心字段，但在有空间时应显示。所有组合都应过滤空字段后再添加分隔符，避免孤立图标和重复分隔线。
+窄屏必须保留“目录 + 上下文”；空间不足时依次隐藏其他扩展状态、session 名称、thinking level、模型和 Git 分支，最后对保留内容使用 `truncateToWidth()`。其他扩展通过 `footerData.getExtensionStatuses()` 设置的状态也必须纳入布局；其优先级不能高于本插件已确认的窄屏核心字段，但在有空间时应显示。所有组合都应过滤空字段后再添加分隔符，避免孤立图标和重复分隔线。
+
+上下文数值使用圆形进度图标：`○`（<25%）、`◔`（25%-49%）、`◑`（50%-74%）、`◕`（75%-99%）、`●`（>=100%）。占用率严格高于 80% 时使用主题 `warning` 颜色，80% 本身不触发警告色。
 
 ### 1.4 限制与替代方案
 

@@ -31,6 +31,19 @@ export function formatContextUsage(usage: ContextUsageValue | undefined): string
   return `${formatThousands(usage.tokens)}/${formatThousands(usage.contextWindow)} (${Math.round(usage.percent)}%)`;
 }
 
+// 使用圆形阶段图标表达上下文进度
+export function contextProgressIcon(percent: number): string {
+  if (percent >= 100) return "●";
+  if (percent >= 75) return "◕";
+  if (percent >= 50) return "◑";
+  if (percent >= 25) return "◔";
+  return "○";
+}
+
+export function contextUsageColor(percent: number): "warning" | "muted" {
+  return percent > 80 ? "warning" : "muted";
+}
+
 function joinFields(fields: string[]): string {
   return fields.filter(Boolean).join(SEPARATOR);
 }
@@ -111,7 +124,8 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
         },
         invalidate() {},
         render(width: number): string[] {
-          const usage = formatContextUsage(ctx.getContextUsage());
+          const contextUsage = ctx.getContextUsage();
+          const usage = formatContextUsage(contextUsage);
           const branch = footerData.getGitBranch();
           const sessionName = ctx.sessionManager.getSessionName();
           const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
@@ -123,7 +137,13 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
             branch: branch ? theme.fg("muted", ` ${branch}`) : undefined,
             model: ctx.model ? theme.fg("muted", `◆ ${ctx.model.provider}/${ctx.model.id}`) : undefined,
             thinking: ctx.thinkingLevel ? theme.fg("muted", `◉ ${ctx.thinkingLevel}`) : undefined,
-            context: usage ? theme.fg("muted", `◔ ${usage}`) : undefined,
+            context:
+              usage && contextUsage?.percent !== null && contextUsage?.percent !== undefined
+                ? theme.fg(
+                    contextUsageColor(contextUsage.percent),
+                    `${contextProgressIcon(contextUsage.percent)} ${usage}`,
+                  )
+                : undefined,
             statuses,
           };
 

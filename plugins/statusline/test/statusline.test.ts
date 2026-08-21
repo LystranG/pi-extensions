@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { formatContextUsage, layoutStatusline, type StatuslineFields } from "../src/index.ts";
+import {
+  contextProgressIcon,
+  contextUsageColor,
+  formatContextUsage,
+  layoutStatusline,
+  type StatuslineFields,
+} from "../src/index.ts";
 
 const fields: StatuslineFields = {
   directory: "dir",
@@ -21,6 +27,21 @@ describe("formatContextUsage", () => {
     expect(formatContextUsage(undefined)).toBeUndefined();
     expect(formatContextUsage({ tokens: 0, contextWindow: 0, percent: 0 })).toBeUndefined();
     expect(formatContextUsage({ tokens: 1_000, contextWindow: 8_000, percent: null })).toBeUndefined();
+  });
+});
+
+describe("context progress", () => {
+  test("uses progressively filled circle icons", () => {
+    expect(contextProgressIcon(0)).toBe("○");
+    expect(contextProgressIcon(25)).toBe("◔");
+    expect(contextProgressIcon(50)).toBe("◑");
+    expect(contextProgressIcon(75)).toBe("◕");
+    expect(contextProgressIcon(100)).toBe("●");
+  });
+
+  test("uses warning color only above 80 percent", () => {
+    expect(contextUsageColor(80)).toBe("muted");
+    expect(contextUsageColor(80.1)).toBe("warning");
   });
 });
 
