@@ -1,0 +1,34 @@
+# @lystran/pi-serena-hooks
+
+把 Serena 的生命周期命令接入 Pi coding agent，不传递 `--client` 参数。
+
+## 要求
+
+- Pi coding agent `>=0.84.2`
+- Node.js `>=20`
+- `serena-hooks` 可执行文件已加入 `PATH`
+
+## 安装
+
+```bash
+pi install npm:@lystran/pi-serena-hooks
+```
+
+本地开发：
+
+```bash
+cd plugins/serena-hooks
+pi install -l .
+```
+
+## 生命周期映射
+
+| Pi 事件 | 执行命令 |
+| --- | --- |
+| 任意 `session_start` | `serena-hooks activate` |
+| 模型调用内置 `bash` 工具前 | `serena-hooks remind` |
+| `session_shutdown` 且原因为 `quit` | `serena-hooks cleanup` |
+
+每个命令最多等待 10 秒。命令不存在、超时或返回非零时不会阻断 Pi；同一会话内，同一动作只显示一次警告，但后续事件仍会继续尝试执行。
+
+用户通过 `!` 或 `!!` 直接执行的 shell 命令不会触发 `remind`。

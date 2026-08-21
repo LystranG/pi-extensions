@@ -1,0 +1,22 @@
+{
+  "name": "@lystran/pi-serena-hooks",
+  "version": "0.0.0",
+  "description": "Run Serena lifecycle hooks from Pi coding agent",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pi-package", "pi-extension", "serena"],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": ["src", "README.md"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.84.2"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@types/bun": "^1.3.0"
+  }
+}
