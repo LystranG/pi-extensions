@@ -1,0 +1,34 @@
+# @lystran/pi-statusline
+
+为 Pi coding agent 提供单行自定义状态栏，显示当前目录、Git 分支、模型、思考等级和上下文占用。
+
+```text
+◫ pi-extensions   main  ◆ openai/gpt-5  ◉ high  ◔ 42k/128k (33%)
+```
+
+## 要求
+
+- Pi coding agent `>=0.84.2`
+- Node.js `>=20`
+- 建议使用支持 Nerd Font 图标的终端字体
+
+## 安装
+
+```bash
+pi install npm:@lystran/pi-statusline
+```
+
+本地开发：
+
+```bash
+cd plugins/statusline
+pi install -l .
+```
+
+## 行为
+
+- 缺失的 Git、模型、思考等级或上下文信息不会显示占位符
+- 状态栏使用当前 Pi 主题配色，不写死 ANSI 色值
+- 终端变窄时先移除其他扩展状态、Git 分支、思考等级和模型，优先保留目录与上下文
+- 有足够空间时会合并其他扩展通过 `setStatus` 注册的状态
+- 自定义 footer 仅在 TUI 模式启用
