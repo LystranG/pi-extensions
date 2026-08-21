@@ -35,6 +35,6 @@ pi install -l .
 - Git 状态按未追踪、工作区变更、暂存区变更显示为 `!n`（蓝色）、`!n`（橙色）和 `+n`（橙色）
 - 第二行显示累计 session token：输入使用 `↓`，输出使用 `↑`，单位为 `K`，达到四位数时进位为 `M`
 - Pi 原生统计中的 `R` 是缓存读取 token，`W` 是缓存写入 token，`CH` 是最近一次请求的缓存命中率
-- `pi-mcp-adapter` 的 `mcp` 状态和 pi-lens 的 `pi-lens-lsp` 状态会显示在第二行，顺序为 session token、`󰒍 MCP:`、`LSP Active`，并保留原状态文本和主题颜色
+- 累计 session token 独占第二行；`pi-mcp-adapter` 的 `mcp` 状态和 pi-lens 的 `pi-lens-lsp` 状态显示在第三行，顺序为 `󰒍 MCP:`、`LSP Active`，并保留原状态文本和主题颜色
 - 上下文图标会按占用率显示 `○`、`◔`、`◑`、`◕` 或 `●`；超过 80% 时使用主题的 error 颜色
 - 自定义 footer 仅在 TUI 模式启用

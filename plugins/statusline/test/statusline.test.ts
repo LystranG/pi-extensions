@@ -99,7 +99,7 @@ describe("git status", () => {
 });
 
 describe("extension status", () => {
-  test("groups MCP before pi-lens LSP on the second line", () => {
+  test("groups MCP before pi-lens LSP on the extension line", () => {
     expect(
       groupExtensionStatuses([
         ["pi-lens-lsp", "LSP Active: typescript"],
@@ -131,7 +131,20 @@ describe("layoutStatusline", () => {
       "dir  session  branch  model  think  ctx  one  two",
     );
   });
-  test("moves MCP status to a second line", () => {
+  test("renders token usage separately from MCP and LSP statuses", () => {
+    expect(
+      layoutStatuslineLines(
+        {
+          ...fields,
+          sessionUsage: "↓159K ↑1.2K",
+          secondaryStatuses: ["󰒍 MCP: 3", "LSP Active: typescript"],
+        },
+        80,
+      ),
+    ).toEqual(["dir  branch  model  think  ctx  one  two", "↓159K ↑1.2K", "󰒍 MCP: 3  LSP Active: typescript"]);
+  });
+
+  test("does not leave an empty token line", () => {
     expect(layoutStatuslineLines({ ...fields, secondaryStatuses: ["󰒍 MCP: 3"] }, 80)).toEqual([
       "dir  branch  model  think  ctx  one  two",
       "󰒍 MCP: 3",

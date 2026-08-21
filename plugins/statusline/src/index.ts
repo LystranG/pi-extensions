@@ -19,6 +19,7 @@ export interface StatuslineFields {
   context?: string | undefined;
   git?: string | undefined;
   statuses: string[];
+  sessionUsage?: string | undefined;
   secondaryStatuses?: string[];
 }
 
@@ -183,6 +184,9 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
 
 export function layoutStatuslineLines(fields: StatuslineFields, width: number): string[] {
   const lines = [layoutStatusline(fields, width)];
+  if (width > 0 && fields.sessionUsage) {
+    lines.push(truncateToWidth(fields.sessionUsage, width));
+  }
   if (width > 0 && fields.secondaryStatuses && fields.secondaryStatuses.length > 0) {
     lines.push(truncateToWidth(joinFields(fields.secondaryStatuses), width));
   }
@@ -275,10 +279,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const sessionUsage = formatSessionUsage(calculateSessionUsage(ctx.sessionManager.getEntries()));
           const extensionStatuses = [...footerData.getExtensionStatuses().entries()];
           const groupedStatuses = groupExtensionStatuses(extensionStatuses);
-          const secondaryStatuses = [
-            ...(sessionUsage ? [theme.fg("muted", sessionUsage)] : []),
-            ...groupedStatuses.secondary,
-          ];
+          const secondaryStatuses = groupedStatuses.secondary;
 
           const fields: StatuslineFields = {
             directory: theme.fg("accent", ` ${directoryName}`),
@@ -295,6 +296,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
                   )
                 : undefined,
             statuses: groupedStatuses.primary,
+            sessionUsage: sessionUsage ? theme.fg("muted", sessionUsage) : undefined,
             secondaryStatuses,
           };
 
