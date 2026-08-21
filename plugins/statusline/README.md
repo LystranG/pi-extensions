@@ -1,9 +1,11 @@
-1# @lystran/pi-statusline
+# @lystran/pi-statusline
 
 为 Pi coding agent 提供紧凑的多行自定义状态栏，显示完整当前路径、session 名称、Git 分支、模型、思考等级、上下文占用和会话 token 统计
 
 ```text
- pi-extensions  ◈ 修复状态栏   main  ◆ openai/gpt-5  ◉ high  ◔ 42k/128k (33%)
+ ~/programming/ai/pi-extensions  ◈ 修复状态栏   main  ◆ openai/gpt-5  ◉ high
+◔ 42k/128k (33%)  ↓159K ↑1.2K W8K R42M CH99.5%
+󰒍 MCP: 3 servers enabled  LSP Active: typescript
 ```
 
 ## 要求
@@ -30,6 +32,7 @@ pi install -l .
 - 缺失的 session 名称、Git、模型、思考等级或上下文信息不会显示占位符
 - 状态栏使用当前 Pi 主题配色，不写死 ANSI 色值
 - 当前路径完整显示，home 目录缩写为 `~`，例如 `~/programming/ai/pi-extensions`
+- 第一行字段之间使用 `│` 分隔，第二、三行使用普通间距以保持 token 和扩展状态紧凑
 - 终端变窄时先移除其他扩展状态、session 名称、Git 分支、思考等级和模型，最后截断完整路径
 - 有足够空间时会合并其他扩展通过 `setStatus` 注册的状态
 - Git 分支使用绿色显示，Git 变更会紧凑合并为一个字段，例如 `!2!1+3`

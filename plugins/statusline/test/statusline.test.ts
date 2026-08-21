@@ -139,12 +139,12 @@ describe("extension status", () => {
 
 describe("layoutStatusline", () => {
   test("keeps all fields when they fit", () => {
-    expect(layoutStatusline(fields, 80)).toBe("dir  branch  model  think  one  two");
+    expect(layoutStatusline(fields, 80)).toBe("dir │ branch │ model │ think │ one │ two");
   });
 
   test("includes a named session", () => {
     expect(layoutStatusline({ ...fields, session: "session" }, 100)).toBe(
-      "dir  session  branch  model  think  one  two",
+      "dir │ session │ branch │ model │ think │ one │ two",
     );
   });
   test("renders token usage separately from MCP and LSP statuses", () => {
@@ -158,22 +158,22 @@ describe("layoutStatusline", () => {
         },
         80,
       ),
-    ).toEqual(["dir  branch  model  think  one  two", "ctx  ↓159K ↑1.2K", "󰒍 MCP: 3  LSP Active: typescript"]);
+    ).toEqual(["dir │ branch │ model │ think │ one │ two", "ctx  ↓159K ↑1.2K", "󰒍 MCP: 3  LSP Active: typescript"]);
   });
 
   test("does not leave an empty token line", () => {
     expect(layoutStatuslineLines({ ...fields, context: undefined, secondaryStatuses: ["󰒍 MCP: 3"] }, 80)).toEqual([
-      "dir  branch  model  think  one  two",
+      "dir │ branch │ model │ think │ one │ two",
       "󰒍 MCP: 3",
     ]);
   });
 
   test("drops optional fields in priority order", () => {
-    expect(layoutStatusline(fields, 35)).toBe("dir  branch  model  think  one  two");
-    expect(layoutStatusline(fields, 30)).toBe("dir  branch  model  think  one");
-    expect(layoutStatusline(fields, 22)).toBe("dir  model  think");
-    expect(layoutStatusline(fields, 15)).toBe("dir  model");
-    expect(layoutStatusline(fields, 10)).toBe("dir  model");
+    expect(layoutStatusline(fields, 35)).toBe("dir │ branch │ model │ think │ one");
+    expect(layoutStatusline(fields, 30)).toBe("dir │ branch │ model │ think");
+    expect(layoutStatusline(fields, 22)).toBe("dir │ model │ think");
+    expect(layoutStatusline(fields, 15)).toBe("dir │ model");
+    expect(layoutStatusline(fields, 10)).toBe("dir");
   });
 
   test("truncates the full directory path", () => {
