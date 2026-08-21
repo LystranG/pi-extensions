@@ -58,7 +58,9 @@
 `@lystran/pi-statusline` 首版采用克制的图标增强，不使用装饰性图形。字段缺失即隐藏，不输出 `unknown` 占位。正常宽度建议顺序：
 
 ```text
-<目录>  <session 名称>  <git 分支>  <provider/id>  <thinking>  <tokens/contextWindow percent>
+<完整 cwd>  <session 名称>  <git 分支>  <Git 变更>  <provider/id>  <thinking>
+<context tokens/window percent>  <session token/cache 统计>
+<MCP 状态>  <pi-lens LSP 状态>
 ```
 
 窄屏第一行优先保留完整路径，并依次隐藏其他扩展状态、session 名称、Git 分支、thinking level 和模型，最后对路径使用 `truncateToWidth()`。上下文与累计 token/cache 统计位于第二行并独立截断。其他扩展通过 `footerData.getExtensionStatuses()` 设置的状态也必须纳入布局；其优先级不能高于本插件已确认的核心字段，但在有空间时应显示。所有组合都应过滤空字段后再添加分隔符，避免孤立图标和重复分隔线。
