@@ -1,6 +1,6 @@
 # @lystran/pi-serena-hooks
 
-把 Serena 的生命周期命令接入 Pi coding agent，不传递 `--client` 参数。
+把 Serena 的生命周期命令接入 Pi coding agent。插件会为 Serena hook 注入 JSON stdin，并显式使用 `claude-code` client 兼容 Pi 的原生工具事件。
 
 ## 要求
 
@@ -25,9 +25,9 @@ pi install -l .
 
 | Pi 事件 | 执行命令 |
 | --- | --- |
-| 任意 `session_start` | `serena-hooks activate` |
-| 模型调用内置 `bash` 工具前 | `serena-hooks remind` |
-| `session_shutdown` 且原因为 `quit` | `serena-hooks cleanup` |
+| 任意 `session_start` | `serena-hooks activate --client claude-code` |
+| 模型调用工具前 | `serena-hooks remind --client claude-code` |
+| `session_shutdown` 且原因为 `quit` | `serena-hooks cleanup --client claude-code` |
 
 每个命令最多等待 10 秒。命令不存在、超时或返回非零时不会阻断 Pi；同一会话内，同一动作只显示一次警告，但后续事件仍会继续尝试执行。
 
