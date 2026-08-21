@@ -4,7 +4,7 @@
 
 ## 结论摘要
 
-两个需求均可用公开 extension API 实现，并应拆成两个独立发布包：`@lystran/pi-statusline` 与 `@lystran/pi-serena-hooks`。statusline 应通过 `ctx.ui.setFooter()` 替换内置 footer，组合 `ctx.cwd`、`ctx.model`、`ctx.thinkingLevel`、`ctx.getContextUsage()` 与 `footerData`；Serena hooks 应监听 `session_start`、`tool_call`、`session_shutdown`，用 `pi.exec("serena-hooks", args, { timeout: 10_000 })` 执行无 shell 命令。
+两个需求均可用公开 extension API 实现，并应拆成两个独立发布包：`@lystran/pi-statusline` 与 `@lystran/pi-serena-hooks`。statusline 应通过 `ctx.ui.setFooter()` 替换内置 footer，组合 `ctx.cwd`、`ctx.sessionManager.getSessionName()`、`ctx.model`、`ctx.thinkingLevel`、`ctx.getContextUsage()` 与 `footerData`；Serena hooks 应监听 `session_start`、`tool_call`、`session_shutdown`，用 `pi.exec("serena-hooks", args, { timeout: 10_000 })` 执行无 shell 命令。
 
 无法精确复刻外部系统的 `SessionStart(startup|resume)` 与泛化 `Stop` 语义：Pi 的事件原因集合更细，且没有名称为 `Stop` 的公开事件。已确认替代方案是每次 `session_start` 都 activate，仅在 `session_shutdown.reason === "quit"` 时 cleanup；这能覆盖 reload/new/resume/fork 后的新会话状态，同时避免在会话切换的中间 shutdown 上误清理新状态。
 
@@ -35,6 +35,7 @@
 | --- | --- | --- |
 | Git 分支 | `footerData.getGitBranch()`；用 `footerData.onBranchChange(callback)` 订阅变化 | 精确可实现，且无需自行轮询或执行 git |
 | cwd 目录名 | `ctx.cwd` 配合 Node `path.basename()` | 精确可实现；根目录等边界应提供可读回退 |
+| session 名称 | `ctx.sessionManager.getSessionName()`；监听 `session_info_changed` 刷新 | 返回 `string \| undefined`；未命名时隐藏 |
 | 上下文已用量 | `ctx.getContextUsage()?.tokens` | 可实现；无用量数据时隐藏 |
 | 上下文总量 | `ctx.getContextUsage()?.contextWindow` | 可实现；无用量数据时隐藏 |
 | 上下文百分比 | `ctx.getContextUsage()?.percent` | 可实现；应采用 API 值而非重复计算 |
@@ -50,14 +51,14 @@
 
 “持续刷新”不应实现为高频 timer。组件在 Pi UI 更新时会重新 render；Git 分支另有 `onBranchChange()` 明确提供变化通知，实现应在回调中调用 TUI invalidation/request-render 能力，并保存退订函数。安装新 footer 或 extension unload/会话退出时必须退订，防止 reload 后累积监听器。该模式直接来自本机 `examples/extensions/custom-footer.ts`。
 
-上下文用量、模型和 thinking level 在 render 时读取当前 `ctx`，因此会随 Pi 正常 UI 更新反映最新状态。`0.84.2` 未提供“每个 token 都触发的 statusline tick”公开承诺，所以不能声称毫秒级或逐 token 刷新；可承诺的是 UI 生命周期驱动的刷新和 Git 分支订阅刷新。
+上下文用量、session 名称、模型和 thinking level 在 render 时读取当前 `ctx`，因此会随 Pi 正常 UI 更新反映最新状态。session 重命名另由公开 `session_info_changed` 事件触发刷新；`0.84.2` 未提供“每个 token 都触发的 statusline tick”公开承诺，所以不能声称毫秒级或逐 token 刷新。
 
 ### 1.3 已确认视觉与窄屏策略
 
 `@lystran/pi-statusline` 首版采用克制的图标增强，不使用装饰性图形。字段缺失即隐藏，不输出 `unknown` 占位。正常宽度建议顺序：
 
 ```text
-<目录>  <git 分支>  <tokens/contextWindow percent>  <provider/id>  <thinking>
+<目录>  <session 名称>  <git 分支>  <provider/id>  <thinking>  <tokens/contextWindow percent>
 ```
 
 窄屏必须保留“目录 + 上下文”；空间不足时依次隐藏 thinking level、模型、Git 分支，最后对保留内容使用 `truncateToWidth()`。其他扩展通过 `footerData.getExtensionStatuses()` 设置的状态也必须纳入布局；其优先级不能高于本插件已确认的窄屏核心字段，但在有空间时应显示。所有组合都应过滤空字段后再添加分隔符，避免孤立图标和重复分隔线。
@@ -169,7 +170,7 @@ Serena hooks 应覆盖：
 - 入口固定 `plugins/statusline/src/index.ts`。
 - `ctx.ui.setFooter()` 安装自定义 footer。
 - Git 使用 `footerData.getGitBranch()` + `onBranchChange()`，保存并调用退订函数。
-- cwd 用 `path.basename(ctx.cwd)`；context 用 `tokens/contextWindow/percent`；模型显示 `provider/id`；thinking 用 `ctx.thinkingLevel`。
+- cwd 用 `path.basename(ctx.cwd)`；session 名称用 `ctx.sessionManager.getSessionName()`，未设置时隐藏，并监听 `session_info_changed` 刷新；context 用 `tokens/contextWindow/percent`；模型显示 `provider/id`；thinking 用 `ctx.thinkingLevel`。
 - 图标增强但克制，缺失项隐藏。
 - 窄屏始终优先目录和上下文，依次隐藏 thinking、模型、Git；最终统一 `truncateToWidth()`。
 - 合并 `footerData.getExtensionStatuses()`，不能吞掉其他扩展状态。

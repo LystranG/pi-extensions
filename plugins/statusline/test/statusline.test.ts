@@ -29,6 +29,11 @@ describe("layoutStatusline", () => {
     expect(layoutStatusline(fields, 80)).toBe("dir  branch  model  think  ctx  one  two");
   });
 
+  test("includes a named session", () => {
+    expect(layoutStatusline({ ...fields, session: "session" }, 100)).toBe(
+      "dir  session  branch  model  think  ctx  one  two",
+    );
+  });
   test("drops optional fields in priority order", () => {
     expect(layoutStatusline(fields, 35)).toBe("dir  branch  model  think  ctx  one");
     expect(layoutStatusline(fields, 30)).toBe("dir  branch  model  think  ctx");

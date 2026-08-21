@@ -12,6 +12,7 @@ export interface ContextUsageValue {
 
 export interface StatuslineFields {
   directory: string;
+  session?: string | undefined;
   branch?: string | undefined;
   model?: string | undefined;
   thinking?: string | undefined;
@@ -53,8 +54,16 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
   if (width <= 0) return "";
 
   const statuses = [...fields.statuses];
-  const render = (branch = fields.branch, thinking = fields.thinking, model = fields.model) =>
-    joinFields([fields.directory, branch ?? "", model ?? "", thinking ?? "", fields.context ?? "", ...statuses]);
+  const render = (session = fields.session, branch = fields.branch, thinking = fields.thinking, model = fields.model) =>
+    joinFields([
+      fields.directory,
+      session ?? "",
+      branch ?? "",
+      model ?? "",
+      thinking ?? "",
+      fields.context ?? "",
+      ...statuses,
+    ]);
 
   let candidate = render();
   while (!fits(candidate, width) && statuses.length > 0) {
@@ -63,13 +72,16 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
   }
   if (fits(candidate, width)) return candidate;
 
-  candidate = render("", fields.thinking, fields.model);
+  candidate = render("", fields.branch, fields.thinking, fields.model);
   if (fits(candidate, width)) return candidate;
 
-  candidate = render("", "", fields.model);
+  candidate = render("", "", fields.thinking, fields.model);
   if (fits(candidate, width)) return candidate;
 
-  candidate = render("", "", "");
+  candidate = render("", "", "", fields.model);
+  if (fits(candidate, width)) return candidate;
+
+  candidate = render("", "", "", "");
   if (fits(candidate, width)) return candidate;
 
   return fitCore(fields.directory, fields.context, width);
@@ -101,11 +113,13 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
         render(width: number): string[] {
           const usage = formatContextUsage(ctx.getContextUsage());
           const branch = footerData.getGitBranch();
+          const sessionName = ctx.sessionManager.getSessionName();
           const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
           const statuses = [...footerData.getExtensionStatuses().values()].map(normalizeStatus).filter(Boolean);
 
           const fields: StatuslineFields = {
             directory: theme.fg("accent", `◫ ${directoryName}`),
+            session: sessionName ? theme.fg("muted", `◈ ${sessionName}`) : undefined,
             branch: branch ? theme.fg("muted", ` ${branch}`) : undefined,
             model: ctx.model ? theme.fg("muted", `◆ ${ctx.model.provider}/${ctx.model.id}`) : undefined,
             thinking: ctx.thinkingLevel ? theme.fg("muted", `◉ ${ctx.thinkingLevel}`) : undefined,
@@ -121,6 +135,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
 
   pi.on("model_select", refresh);
   pi.on("thinking_level_select", refresh);
+  pi.on("session_info_changed", refresh);
   pi.on("message_end", refresh);
   pi.on("session_compact", refresh);
   pi.on("session_shutdown", () => {
