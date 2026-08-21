@@ -20,6 +20,12 @@ export interface StatuslineFields {
   statuses: string[];
 }
 
+export interface GitChangeCounts {
+  untracked: number;
+  unstaged: number;
+  staged: number;
+}
+
 function formatThousands(value: number): string {
   const thousands = Math.max(0, value) / 1000;
   const precision = thousands < 10 && !Number.isInteger(thousands) ? 1 : 0;
@@ -40,8 +46,24 @@ export function contextProgressIcon(percent: number): string {
   return "○";
 }
 
-export function contextUsageColor(percent: number): "warning" | "muted" {
-  return percent > 80 ? "warning" : "muted";
+export function contextUsageColor(percent: number): "error" | "muted" {
+  return percent > 80 ? "error" : "muted";
+}
+
+export function parseGitStatusPorcelain(output: string): GitChangeCounts {
+  const changes: GitChangeCounts = { untracked: 0, unstaged: 0, staged: 0 };
+  for (const entry of output.split("\0")) {
+    if (entry.length < 3 || entry[2] !== " ") continue;
+    const indexStatus = entry[0];
+    const worktreeStatus = entry[1];
+    if (indexStatus === "?" && worktreeStatus === "?") {
+      changes.untracked++;
+      continue;
+    }
+    if (indexStatus !== " ") changes.staged++;
+    if (worktreeStatus !== " ") changes.unstaged++;
+  }
+  return changes;
 }
 
 function joinFields(fields: string[]): string {
@@ -105,14 +127,51 @@ export function normalizeExtensionStatus(key: string, value: string): string {
   return key === "mcp" ? status.replace(/(?:🔌 )?MCP:/, "󰒍 MCP:") : status;
 }
 
+function formatGitChanges(
+  changes: GitChangeCounts,
+  colorize: (color: "accent" | "warning", text: string) => string,
+): string[] {
+  const statuses: string[] = [];
+  if (changes.untracked > 0) statuses.push(colorize("accent", `!${changes.untracked}`));
+  if (changes.unstaged > 0) statuses.push(colorize("warning", `!${changes.unstaged}`));
+  if (changes.staged > 0) statuses.push(colorize("warning", `+${changes.staged}`));
+  return statuses;
+}
+
 export default function statuslineExtension(pi: ExtensionAPI): void {
   let requestRender: (() => void) | undefined;
+  let refreshGitStatus: (() => void) | undefined;
+  let gitChanges: GitChangeCounts = { untracked: 0, unstaged: 0, staged: 0 };
+  let gitRefreshId = 0;
   const refresh = () => requestRender?.();
+  const updateGitStatus = async (cwd: string): Promise<void> => {
+    const refreshId = ++gitRefreshId;
+    try {
+      const result = await pi.exec(
+        "git",
+        ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all", "-z"],
+        {
+          cwd,
+          timeout: 1_000,
+        },
+      );
+      if (refreshId !== gitRefreshId) return;
+      gitChanges =
+        result.code === 0 ? parseGitStatusPorcelain(result.stdout) : { untracked: 0, unstaged: 0, staged: 0 };
+    } catch {
+      if (refreshId !== gitRefreshId) return;
+      gitChanges = { untracked: 0, unstaged: 0, staged: 0 };
+    }
+    requestRender?.();
+  };
 
   pi.on("session_start", (_event, ctx) => {
     if (ctx.mode !== "tui") return;
 
     // 自定义 footer 统一处理 Git、上下文和扩展状态
+    refreshGitStatus = () => void updateGitStatus(ctx.cwd);
+    gitChanges = { untracked: 0, unstaged: 0, staged: 0 };
+    void updateGitStatus(ctx.cwd);
     ctx.ui.setFooter((tui, theme, footerData) => {
       const renderFooter = () => tui.requestRender();
       requestRender = renderFooter;
@@ -130,9 +189,12 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const branch = footerData.getGitBranch();
           const sessionName = ctx.sessionManager.getSessionName();
           const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
-          const statuses = [...footerData.getExtensionStatuses().entries()]
-            .map(([key, value]) => normalizeExtensionStatus(key, value))
-            .filter(Boolean);
+          const statuses = [
+            ...formatGitChanges(gitChanges, (color, text) => theme.fg(color, text)),
+            ...[...footerData.getExtensionStatuses().entries()]
+              .map(([key, value]) => normalizeExtensionStatus(key, value))
+              .filter(Boolean),
+          ];
 
           const fields: StatuslineFields = {
             directory: theme.fg("accent", ` ${directoryName}`),
@@ -159,9 +221,18 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
   pi.on("model_select", refresh);
   pi.on("thinking_level_select", refresh);
   pi.on("session_info_changed", refresh);
-  pi.on("message_end", refresh);
+  pi.on("message_end", () => {
+    refreshGitStatus?.();
+    refresh();
+  });
+  pi.on("tool_result", () => {
+    refreshGitStatus?.();
+    refresh();
+  });
   pi.on("session_compact", refresh);
   pi.on("session_shutdown", () => {
+    gitRefreshId++;
+    refreshGitStatus = undefined;
     requestRender = undefined;
   });
 }

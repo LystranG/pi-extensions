@@ -63,12 +63,12 @@
 
 窄屏必须保留“目录 + 上下文”；空间不足时依次隐藏其他扩展状态、session 名称、thinking level、模型和 Git 分支，最后对保留内容使用 `truncateToWidth()`。其他扩展通过 `footerData.getExtensionStatuses()` 设置的状态也必须纳入布局；其优先级不能高于本插件已确认的窄屏核心字段，但在有空间时应显示。所有组合都应过滤空字段后再添加分隔符，避免孤立图标和重复分隔线。
 
-上下文数值使用圆形进度图标：`○`（<25%）、`◔`（25%-49%）、`◑`（50%-74%）、`◕`（75%-99%）、`●`（>=100%）。占用率严格高于 80% 时使用主题 `warning` 颜色，80% 本身不触发警告色。
+上下文数值使用圆形进度图标：`○`（<25%）、`◔`（25%-49%）、`◑`（50%-74%）、`◕`（75%-99%）、`●`（>=100%）。占用率严格高于 80% 时使用主题 `error` 颜色，80% 本身不触发红色警告。Git 变更使用异步 `pi.exec("git", ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all", "-z"], { cwd, timeout: 1_000 })` 缓存读取，避免同步阻塞 footer render。
 
 ### 1.4 限制与替代方案
 
 - **中风险**：`setFooter()` 替换整个内置 footer。若只重画本插件字段，会造成内置信息和其他扩展状态回归。替代方案是以官方 custom-footer 示例为基线，并显式合并 `getExtensionStatuses()`。
-- **中风险**：API 没有承诺任意状态变化立即触发单独的 footer refresh。替代方案是依赖正常 UI render，并仅对官方提供订阅的 Git 分支主动 invalidate；首版不增加轮询。
+- **中风险**：API 没有承诺任意状态变化立即触发单独的 footer refresh。替代方案是依赖正常 UI render，并仅对官方提供订阅的 Git 分支主动 invalidate；Git 变更在 session start、tool result 和 message end 后异步刷新，不增加同步轮询。
 - **低风险**：超窄终端无法同时完整显示目录与上下文。替代方案是先省略非核心字段，再用官方 `truncateToWidth()` 保证不越界；不允许文本覆盖相邻 UI。
 
 ## 2. Serena session/tool 生命周期映射
@@ -176,6 +176,7 @@ Serena hooks 应覆盖：
 - 图标增强但克制，缺失项隐藏。
 - 窄屏始终优先目录和上下文，依次隐藏 thinking、模型、Git；最终统一 `truncateToWidth()`。
 - 合并 `footerData.getExtensionStatuses()`，不能吞掉其他扩展状态；对 `pi-mcp-adapter` 的固定 status key `mcp`，将其 `🔌 MCP:` 前缀替换为 `󰒍 MCP:`，保留状态文本和 ANSI 主题颜色。
+- Git 变更通过异步 `pi.exec()` 读取 porcelain 状态：未追踪显示蓝色 `!n`，未暂存工作区变更显示橙色 `!n`，暂存区变更显示橙色 `+n`；这些核心 Git 状态优先于其他扩展状态。
 
 ### `@lystran/pi-serena-hooks`
 

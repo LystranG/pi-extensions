@@ -6,6 +6,7 @@ import {
   formatContextUsage,
   layoutStatusline,
   normalizeExtensionStatus,
+  parseGitStatusPorcelain,
   type StatuslineFields,
 } from "../src/index.ts";
 
@@ -40,9 +41,19 @@ describe("context progress", () => {
     expect(contextProgressIcon(100)).toBe("●");
   });
 
-  test("uses warning color only above 80 percent", () => {
+  test("uses error color only above 80 percent", () => {
     expect(contextUsageColor(80)).toBe("muted");
-    expect(contextUsageColor(80.1)).toBe("warning");
+    expect(contextUsageColor(80.1)).toBe("error");
+  });
+});
+
+describe("git status", () => {
+  test("counts untracked, unstaged, and staged entries", () => {
+    const output = ["?? new-file.ts ", " M changed.ts ", "D  staged-delete.ts ", "MM staged-and-changed.ts "].join(
+      "\0",
+    );
+
+    expect(parseGitStatusPorcelain(output)).toEqual({ untracked: 1, unstaged: 2, staged: 2 });
   });
 });
 
