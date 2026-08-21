@@ -174,8 +174,8 @@ Serena hooks 应覆盖：
 - Git 使用 `footerData.getGitBranch()` + `onBranchChange()`，保存并调用退订函数。
 - cwd 用 `path.basename(ctx.cwd)`；session 名称用 `ctx.sessionManager.getSessionName()`，未设置时隐藏，并监听 `session_info_changed` 刷新；context 用 `tokens/contextWindow/percent`；模型显示 `provider/id`；thinking 用 `ctx.thinkingLevel`。
 - 图标增强但克制，缺失项隐藏。
-- 窄屏始终优先目录、分支、紧凑 Git 变更和上下文；pi-lens 第二行、MCP 第三行及其他扩展状态在空间不足时隐藏，最终统一 `truncateToWidth()`。
-- 合并 `footerData.getExtensionStatuses()`，不能吞掉其他扩展状态；`pi-lens`/`lens` status key 独占第二行，`pi-mcp-adapter` 的固定 status key `mcp` 将其 `🔌 MCP:` 前缀替换为 `󰒍 MCP:` 并独占第三行，保留状态文本和 ANSI 主题颜色。
+- 窄屏始终优先目录、分支、紧凑 Git 变更和上下文；其他扩展状态及第二行 MCP 状态在空间不足时隐藏，最终统一 `truncateToWidth()`。
+- 合并 `footerData.getExtensionStatuses()`，不能吞掉其他扩展状态；对 `pi-mcp-adapter` 的固定 status key `mcp`，将其 `🔌 MCP:` 前缀替换为 `󰒍 MCP:` 并独占第二行，保留状态文本和 ANSI 主题颜色。
 - Git 变更通过异步 `pi.exec()` 读取 porcelain 状态：未追踪显示蓝色 `!n`，未暂存工作区变更显示橙色 `!n`，暂存区变更显示橙色 `+n`；三个计数合并为无空格紧凑字段，分支使用绿色。
 
 ### `@lystran/pi-serena-hooks`

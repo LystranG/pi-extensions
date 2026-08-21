@@ -20,7 +20,6 @@ export interface StatuslineFields {
   git?: string | undefined;
   statuses: string[];
   secondaryStatuses?: string[];
-  tertiaryStatuses?: string[];
 }
 
 export interface GitChangeCounts {
@@ -131,9 +130,6 @@ export function layoutStatuslineLines(fields: StatuslineFields, width: number): 
   if (width > 0 && fields.secondaryStatuses && fields.secondaryStatuses.length > 0) {
     lines.push(truncateToWidth(joinFields(fields.secondaryStatuses), width));
   }
-  if (width > 0 && fields.tertiaryStatuses && fields.tertiaryStatuses.length > 0) {
-    lines.push(truncateToWidth(joinFields(fields.tertiaryStatuses), width));
-  }
   return lines;
 }
 
@@ -151,10 +147,6 @@ export function formatGitChanges(
   if (changes.unstaged > 0) statuses.push(colorize("warning", `!${changes.unstaged}`));
   if (changes.staged > 0) statuses.push(colorize("warning", `+${changes.staged}`));
   return statuses.length > 0 ? statuses.join("") : undefined;
-}
-
-function isPiLensStatus(key: string): boolean {
-  return key === "lens" || key === "pi-lens";
 }
 
 export default function statuslineExtension(pi: ExtensionAPI): void {
@@ -210,14 +202,10 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
           const extensionStatuses = [...footerData.getExtensionStatuses().entries()];
           const statuses = extensionStatuses
-            .filter(([key]) => key !== "mcp" && !isPiLensStatus(key))
+            .filter(([key]) => key !== "mcp")
             .map(([key, value]) => normalizeExtensionStatus(key, value))
             .filter(Boolean);
           const secondaryStatuses = extensionStatuses
-            .filter(([key]) => isPiLensStatus(key))
-            .map(([key, value]) => normalizeExtensionStatus(key, value))
-            .filter(Boolean);
-          const tertiaryStatuses = extensionStatuses
             .filter(([key]) => key === "mcp")
             .map(([key, value]) => normalizeExtensionStatus(key, value))
             .filter(Boolean);
@@ -238,7 +226,6 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
                 : undefined,
             statuses,
             secondaryStatuses,
-            tertiaryStatuses,
           };
 
           return layoutStatuslineLines(fields, width);
