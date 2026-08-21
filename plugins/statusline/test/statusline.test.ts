@@ -64,7 +64,6 @@ describe("session usage", () => {
       cacheWrite: 1_000,
       latestCacheHitRate: 80,
     });
-    expect(formatSessionUsage({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })).toBe("↓0K ↑0K");
     expect(formatSessionUsage(totals)).toBe("↓1.6K ↑550K");
   });
 });

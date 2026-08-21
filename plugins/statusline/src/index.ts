@@ -117,9 +117,11 @@ export function calculateSessionUsage(
   return totals;
 }
 
-export function formatSessionUsage(totals: SessionUsageTotals): string {
-  const parts = [`↓${formatTokenCount(totals.input)}`, `↑${formatTokenCount(totals.output)}`];
-  return parts.join(" ");
+export function formatSessionUsage(totals: SessionUsageTotals): string | undefined {
+  const parts: string[] = [];
+  if (totals.input > 0) parts.push(`↓${formatTokenCount(totals.input)}`);
+  if (totals.output > 0) parts.push(`↑${formatTokenCount(totals.output)}`);
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 function joinFields(fields: string[]): string {
