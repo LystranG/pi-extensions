@@ -2,7 +2,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const SEPARATOR = "  ";
-const PRIMARY_SEPARATOR = " │ ";
 
 export interface ContextUsageValue {
   tokens: number | null;
@@ -144,9 +143,6 @@ function joinFields(fields: string[]): string {
   return fields.filter(Boolean).join(SEPARATOR);
 }
 
-function joinPrimaryFields(fields: string[]): string {
-  return fields.filter(Boolean).join(PRIMARY_SEPARATOR);
-}
 function fits(value: string, width: number): boolean {
   return visibleWidth(value) <= width;
 }
@@ -156,7 +152,7 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
 
   const statuses = [...fields.statuses];
   const render = (session = fields.session, branch = fields.branch, thinking = fields.thinking, model = fields.model) =>
-    joinPrimaryFields([
+    joinFields([
       fields.directory,
       session ?? "",
       branch ?? "",
