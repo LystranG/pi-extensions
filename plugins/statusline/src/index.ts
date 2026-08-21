@@ -28,6 +28,17 @@ export interface GitChangeCounts {
   staged: number;
 }
 
+export interface TokenUsageValue {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+export interface SessionUsageTotals extends TokenUsageValue {
+  latestCacheHitRate?: number;
+}
+
 function formatThousands(value: number): string {
   const thousands = Math.max(0, value) / 1000;
   const precision = thousands < 10 && !Number.isInteger(thousands) ? 1 : 0;
@@ -66,6 +77,51 @@ export function parseGitStatusPorcelain(output: string): GitChangeCounts {
     if (worktreeStatus !== " ") changes.unstaged++;
   }
   return changes;
+}
+
+export function formatTokenCount(value: number): string {
+  const absoluteValue = Math.max(0, value);
+  if (absoluteValue >= 1_000_000) {
+    const millions = absoluteValue / 1_000_000;
+    const precision = millions < 10 && !Number.isInteger(millions) ? 1 : 0;
+    return `${millions.toFixed(precision).replace(/\.0$/, "")}M`;
+  }
+  const thousands = absoluteValue / 1_000;
+  if (Math.round(thousands) >= 1_000) return `${(absoluteValue / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  const precision = thousands < 10 && !Number.isInteger(thousands) ? 1 : 0;
+  return `${thousands.toFixed(precision).replace(/\.0$/, "")}K`;
+}
+
+export function calculateSessionUsage(
+  entries: ReadonlyArray<{
+    type: string;
+    message?: { role: string; usage?: TokenUsageValue };
+    usage?: TokenUsageValue;
+  }>,
+): SessionUsageTotals {
+  const totals: SessionUsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  for (const entry of entries) {
+    const usage = entry.type === "message" ? entry.message?.usage : entry.usage;
+    if (!usage) continue;
+    totals.input += usage.input;
+    totals.output += usage.output;
+    totals.cacheRead += usage.cacheRead;
+    totals.cacheWrite += usage.cacheWrite;
+    if (entry.type === "message" && entry.message?.role === "assistant") {
+      const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+      if (promptTokens > 0) {
+        totals.latestCacheHitRate = (usage.cacheRead / promptTokens) * 100;
+      }
+    }
+  }
+  return totals;
+}
+
+export function formatSessionUsage(totals: SessionUsageTotals): string | undefined {
+  const parts: string[] = [];
+  if (totals.input > 0) parts.push(`↓${formatTokenCount(totals.input)}`);
+  if (totals.output > 0) parts.push(`↑${formatTokenCount(totals.output)}`);
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 function joinFields(fields: string[]): string {
@@ -200,15 +256,19 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const branch = footerData.getGitBranch();
           const sessionName = ctx.sessionManager.getSessionName();
           const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
+          const sessionUsage = formatSessionUsage(calculateSessionUsage(ctx.sessionManager.getEntries()));
           const extensionStatuses = [...footerData.getExtensionStatuses().entries()];
           const statuses = extensionStatuses
             .filter(([key]) => key !== "mcp")
             .map(([key, value]) => normalizeExtensionStatus(key, value))
             .filter(Boolean);
-          const secondaryStatuses = extensionStatuses
-            .filter(([key]) => key === "mcp")
-            .map(([key, value]) => normalizeExtensionStatus(key, value))
-            .filter(Boolean);
+          const secondaryStatuses = [
+            ...(sessionUsage ? [theme.fg("muted", sessionUsage)] : []),
+            ...extensionStatuses
+              .filter(([key]) => key === "mcp")
+              .map(([key, value]) => normalizeExtensionStatus(key, value))
+              .filter(Boolean),
+          ];
 
           const fields: StatuslineFields = {
             directory: theme.fg("accent", ` ${directoryName}`),

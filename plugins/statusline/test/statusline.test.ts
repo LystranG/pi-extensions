@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
+  calculateSessionUsage,
   contextProgressIcon,
   contextUsageColor,
   formatContextUsage,
   formatGitChanges,
+  formatSessionUsage,
+  formatTokenCount,
   layoutStatusline,
   layoutStatuslineLines,
   normalizeExtensionStatus,
@@ -31,6 +34,37 @@ describe("formatContextUsage", () => {
     expect(formatContextUsage(undefined)).toBeUndefined();
     expect(formatContextUsage({ tokens: 0, contextWindow: 0, percent: 0 })).toBeUndefined();
     expect(formatContextUsage({ tokens: 1_000, contextWindow: 8_000, percent: null })).toBeUndefined();
+  });
+});
+
+describe("session usage", () => {
+  test("formats token counts in K and M", () => {
+    expect(formatTokenCount(1_500)).toBe("1.5K");
+    expect(formatTokenCount(999_999)).toBe("1M");
+    expect(formatTokenCount(1_000_000)).toBe("1M");
+  });
+
+  test("accumulates usage and calculates the latest cache hit rate", () => {
+    const totals = calculateSessionUsage([
+      {
+        type: "message",
+        message: { role: "assistant", usage: { input: 1_000, output: 200_000, cacheRead: 8_000, cacheWrite: 1_000 } },
+      },
+      {
+        type: "message",
+        message: { role: "toolResult", usage: { input: 100, output: 50_000, cacheRead: 0, cacheWrite: 0 } },
+      },
+      { type: "compaction", usage: { input: 500, output: 300_000, cacheRead: 0, cacheWrite: 0 } },
+    ]);
+
+    expect(totals).toEqual({
+      input: 1_600,
+      output: 550_000,
+      cacheRead: 8_000,
+      cacheWrite: 1_000,
+      latestCacheHitRate: 80,
+    });
+    expect(formatSessionUsage(totals)).toBe("↓1.6K ↑550K");
   });
 });
 
