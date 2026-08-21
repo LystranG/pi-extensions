@@ -12,6 +12,9 @@
   "pi": {
     "extensions": ["./src/index.ts"]
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.84.2"
   },
