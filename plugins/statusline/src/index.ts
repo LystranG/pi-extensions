@@ -17,7 +17,9 @@ export interface StatuslineFields {
   model?: string | undefined;
   thinking?: string | undefined;
   context?: string | undefined;
+  git?: string | undefined;
   statuses: string[];
+  secondaryStatuses?: string[];
 }
 
 export interface GitChangeCounts {
@@ -94,6 +96,7 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
       fields.directory,
       session ?? "",
       branch ?? "",
+      fields.git ?? "",
       model ?? "",
       thinking ?? "",
       fields.context ?? "",
@@ -122,20 +125,28 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
   return fitCore(fields.directory, fields.context, width);
 }
 
+export function layoutStatuslineLines(fields: StatuslineFields, width: number): string[] {
+  const lines = [layoutStatusline(fields, width)];
+  if (width > 0 && fields.secondaryStatuses && fields.secondaryStatuses.length > 0) {
+    lines.push(truncateToWidth(joinFields(fields.secondaryStatuses), width));
+  }
+  return lines;
+}
+
 export function normalizeExtensionStatus(key: string, value: string): string {
   const status = value.replaceAll(/\s+/g, " ").trim();
   return key === "mcp" ? status.replace(/(?:🔌 )?MCP:/, "󰒍 MCP:") : status;
 }
 
-function formatGitChanges(
+export function formatGitChanges(
   changes: GitChangeCounts,
   colorize: (color: "accent" | "warning", text: string) => string,
-): string[] {
+): string | undefined {
   const statuses: string[] = [];
   if (changes.untracked > 0) statuses.push(colorize("accent", `!${changes.untracked}`));
   if (changes.unstaged > 0) statuses.push(colorize("warning", `!${changes.unstaged}`));
   if (changes.staged > 0) statuses.push(colorize("warning", `+${changes.staged}`));
-  return statuses;
+  return statuses.length > 0 ? statuses.join(" ") : undefined;
 }
 
 export default function statuslineExtension(pi: ExtensionAPI): void {
@@ -189,17 +200,21 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const branch = footerData.getGitBranch();
           const sessionName = ctx.sessionManager.getSessionName();
           const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
-          const statuses = [
-            ...formatGitChanges(gitChanges, (color, text) => theme.fg(color, text)),
-            ...[...footerData.getExtensionStatuses().entries()]
-              .map(([key, value]) => normalizeExtensionStatus(key, value))
-              .filter(Boolean),
-          ];
+          const extensionStatuses = [...footerData.getExtensionStatuses().entries()];
+          const statuses = extensionStatuses
+            .filter(([key]) => key !== "mcp")
+            .map(([key, value]) => normalizeExtensionStatus(key, value))
+            .filter(Boolean);
+          const secondaryStatuses = extensionStatuses
+            .filter(([key]) => key === "mcp")
+            .map(([key, value]) => normalizeExtensionStatus(key, value))
+            .filter(Boolean);
 
           const fields: StatuslineFields = {
             directory: theme.fg("accent", ` ${directoryName}`),
             session: sessionName ? theme.fg("muted", `◈ ${sessionName}`) : undefined,
-            branch: branch ? theme.fg("muted", ` ${branch}`) : undefined,
+            branch: branch ? theme.fg("success", ` ${branch}`) : undefined,
+            git: formatGitChanges(gitChanges, (color, text) => theme.fg(color, text)),
             model: ctx.model ? theme.fg("muted", `◆ ${ctx.model.provider}/${ctx.model.id}`) : undefined,
             thinking: ctx.thinkingLevel ? theme.fg("muted", `◉ ${ctx.thinkingLevel}`) : undefined,
             context:
@@ -210,9 +225,10 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
                   )
                 : undefined,
             statuses,
+            secondaryStatuses,
           };
 
-          return [layoutStatusline(fields, width)];
+          return layoutStatuslineLines(fields, width);
         },
       };
     });
