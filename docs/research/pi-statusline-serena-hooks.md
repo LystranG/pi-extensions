@@ -175,7 +175,7 @@ Serena hooks 应覆盖：
 - cwd 用 `path.basename(ctx.cwd)`；session 名称用 `ctx.sessionManager.getSessionName()`，未设置时隐藏，并监听 `session_info_changed` 刷新；context 用 `tokens/contextWindow/percent`；模型显示 `provider/id`；thinking 用 `ctx.thinkingLevel`。
 - 图标增强但克制，缺失项隐藏。
 - 窄屏始终优先目录和上下文，依次隐藏 thinking、模型、Git；最终统一 `truncateToWidth()`。
-- 合并 `footerData.getExtensionStatuses()`，不能吞掉其他扩展状态。
+- 合并 `footerData.getExtensionStatuses()`，不能吞掉其他扩展状态；对 `pi-mcp-adapter` 的固定 status key `mcp`，将其 `🔌 MCP:` 前缀替换为 `󰒍 MCP:`，保留状态文本和 ANSI 主题颜色。
 
 ### `@lystran/pi-serena-hooks`
 

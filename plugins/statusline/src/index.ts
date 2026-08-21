@@ -100,8 +100,9 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
   return fitCore(fields.directory, fields.context, width);
 }
 
-function normalizeStatus(value: string): string {
-  return value.replaceAll(/\s+/g, " ").trim();
+export function normalizeExtensionStatus(key: string, value: string): string {
+  const status = value.replaceAll(/\s+/g, " ").trim();
+  return key === "mcp" ? status.replace(/(?:🔌 )?MCP:/, "󰒍 MCP:") : status;
 }
 
 export default function statuslineExtension(pi: ExtensionAPI): void {
@@ -129,7 +130,9 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const branch = footerData.getGitBranch();
           const sessionName = ctx.sessionManager.getSessionName();
           const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
-          const statuses = [...footerData.getExtensionStatuses().values()].map(normalizeStatus).filter(Boolean);
+          const statuses = [...footerData.getExtensionStatuses().entries()]
+            .map(([key, value]) => normalizeExtensionStatus(key, value))
+            .filter(Boolean);
 
           const fields: StatuslineFields = {
             directory: theme.fg("accent", ` ${directoryName}`),

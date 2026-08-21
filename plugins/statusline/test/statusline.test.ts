@@ -5,6 +5,7 @@ import {
   contextUsageColor,
   formatContextUsage,
   layoutStatusline,
+  normalizeExtensionStatus,
   type StatuslineFields,
 } from "../src/index.ts";
 
@@ -42,6 +43,16 @@ describe("context progress", () => {
   test("uses warning color only above 80 percent", () => {
     expect(contextUsageColor(80)).toBe("muted");
     expect(contextUsageColor(80.1)).toBe("warning");
+  });
+});
+
+describe("extension status", () => {
+  test("replaces only the pi-mcp-adapter status icon", () => {
+    expect(normalizeExtensionStatus("mcp", "🔌 MCP: 3 servers")).toBe("󰒍 MCP: 3 servers");
+    expect(normalizeExtensionStatus("mcp", "\u001b[31m🔌 MCP: 3 servers\u001b[39m")).toBe(
+      "\u001b[31m󰒍 MCP: 3 servers\u001b[39m",
+    );
+    expect(normalizeExtensionStatus("other", "🔌 MCP: unrelated")).toBe("🔌 MCP: unrelated");
   });
 });
 
