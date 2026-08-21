@@ -1,4 +1,3 @@
-import { basename, parse } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
@@ -38,6 +37,12 @@ export interface TokenUsageValue {
 
 export interface SessionUsageTotals extends TokenUsageValue {
   latestCacheHitRate?: number;
+}
+
+export function formatCwdForStatusline(cwd: string, home = process.env.HOME): string {
+  if (!home) return cwd;
+  if (cwd === home) return "~";
+  return cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd;
 }
 
 function formatThousands(value: number): string {
@@ -142,17 +147,6 @@ function fits(value: string, width: number): boolean {
   return visibleWidth(value) <= width;
 }
 
-function fitCore(directory: string, context: string | undefined, width: number): string {
-  if (width <= 0) return "";
-  if (!context) return truncateToWidth(directory, width);
-  if (visibleWidth(context) >= width) return truncateToWidth(context, width);
-
-  // 窄屏时优先保留目录和上下文
-  const directoryWidth = width - visibleWidth(context) - visibleWidth(SEPARATOR);
-  if (directoryWidth <= 0) return truncateToWidth(context, width);
-  return `${truncateToWidth(directory, directoryWidth)}${SEPARATOR}${context}`;
-}
-
 export function layoutStatusline(fields: StatuslineFields, width: number): string {
   if (width <= 0) return "";
 
@@ -165,7 +159,6 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
       fields.git ?? "",
       model ?? "",
       thinking ?? "",
-      fields.context ?? "",
       ...statuses,
     ]);
 
@@ -188,13 +181,13 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
   candidate = render("", "", "", "");
   if (fits(candidate, width)) return candidate;
 
-  return fitCore(fields.directory, fields.context, width);
+  return truncateToWidth(fields.directory, width);
 }
 
 export function layoutStatuslineLines(fields: StatuslineFields, width: number): string[] {
   const lines = [layoutStatusline(fields, width)];
-  if (width > 0 && fields.sessionUsage) {
-    lines.push(truncateToWidth(fields.sessionUsage, width));
+  if (width > 0 && (fields.context || fields.sessionUsage)) {
+    lines.push(truncateToWidth(joinFields([fields.context ?? "", fields.sessionUsage ?? ""]), width));
   }
   if (width > 0 && fields.secondaryStatuses && fields.secondaryStatuses.length > 0) {
     lines.push(truncateToWidth(joinFields(fields.secondaryStatuses), width));
@@ -284,26 +277,27 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
           const usage = formatContextUsage(contextUsage);
           const branch = footerData.getGitBranch();
           const sessionName = ctx.sessionManager.getSessionName();
-          const directoryName = basename(ctx.cwd) || parse(ctx.cwd).root || ctx.cwd;
+          const directory = formatCwdForStatusline(ctx.cwd);
+          const contextStatus =
+            usage && contextUsage?.percent !== null && contextUsage?.percent !== undefined
+              ? theme.fg(
+                  contextUsageColor(contextUsage.percent),
+                  `${contextProgressIcon(contextUsage.percent)} ${usage}`,
+                )
+              : undefined;
           const sessionUsage = formatSessionUsage(calculateSessionUsage(ctx.sessionManager.getEntries()));
           const extensionStatuses = [...footerData.getExtensionStatuses().entries()];
           const groupedStatuses = groupExtensionStatuses(extensionStatuses);
           const secondaryStatuses = groupedStatuses.secondary;
 
           const fields: StatuslineFields = {
-            directory: theme.fg("accent", ` ${directoryName}`),
+            directory: theme.fg("accent", ` ${directory}`),
             session: sessionName ? theme.fg("muted", `◈ ${sessionName}`) : undefined,
             branch: branch ? theme.fg("success", ` ${branch}`) : undefined,
             git: formatGitChanges(gitChanges, (color, text) => theme.fg(color, text)),
             model: ctx.model ? theme.fg("muted", `◆ ${ctx.model.provider}/${ctx.model.id}`) : undefined,
             thinking: ctx.thinkingLevel ? theme.fg("muted", `◉ ${ctx.thinkingLevel}`) : undefined,
-            context:
-              usage && contextUsage?.percent !== null && contextUsage?.percent !== undefined
-                ? theme.fg(
-                    contextUsageColor(contextUsage.percent),
-                    `${contextProgressIcon(contextUsage.percent)} ${usage}`,
-                  )
-                : undefined,
+            context: contextStatus,
             statuses: groupedStatuses.primary,
             sessionUsage: sessionUsage ? theme.fg("muted", sessionUsage) : undefined,
             secondaryStatuses,

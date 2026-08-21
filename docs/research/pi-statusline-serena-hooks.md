@@ -34,7 +34,7 @@
 | 显示项 | `0.84.2` 数据源 | 结论 |
 | --- | --- | --- |
 | Git 分支 | `footerData.getGitBranch()`；用 `footerData.onBranchChange(callback)` 订阅变化 | 精确可实现，且无需自行轮询或执行 git |
-| cwd 目录名 | `ctx.cwd` 配合 Node `path.basename()` | 精确可实现；根目录等边界应提供可读回退 |
+| cwd 完整路径 | `ctx.cwd`，home 前缀缩写为 `~` | 精确可实现；窄屏时使用官方宽度工具截断 |
 | session 名称 | `ctx.sessionManager.getSessionName()`；监听 `session_info_changed` 刷新 | 返回 `string \| undefined`；未命名时隐藏 |
 | 上下文已用量 | `ctx.getContextUsage()?.tokens` | 可实现；无用量数据时隐藏 |
 | 上下文总量 | `ctx.getContextUsage()?.contextWindow` | 可实现；无用量数据时隐藏 |
@@ -61,7 +61,7 @@
 <目录>  <session 名称>  <git 分支>  <provider/id>  <thinking>  <tokens/contextWindow percent>
 ```
 
-窄屏必须保留“目录 + 上下文”；空间不足时依次隐藏其他扩展状态、session 名称、thinking level、模型和 Git 分支，最后对保留内容使用 `truncateToWidth()`。其他扩展通过 `footerData.getExtensionStatuses()` 设置的状态也必须纳入布局；其优先级不能高于本插件已确认的窄屏核心字段，但在有空间时应显示。所有组合都应过滤空字段后再添加分隔符，避免孤立图标和重复分隔线。
+窄屏第一行优先保留完整路径，并依次隐藏其他扩展状态、session 名称、Git 分支、thinking level 和模型，最后对路径使用 `truncateToWidth()`。上下文与累计 token/cache 统计位于第二行并独立截断。其他扩展通过 `footerData.getExtensionStatuses()` 设置的状态也必须纳入布局；其优先级不能高于本插件已确认的核心字段，但在有空间时应显示。所有组合都应过滤空字段后再添加分隔符，避免孤立图标和重复分隔线。
 
 上下文数值使用圆形进度图标：`○`（<25%）、`◔`（25%-49%）、`◑`（50%-74%）、`◕`（75%-99%）、`●`（>=100%）。占用率严格高于 80% 时使用主题 `error` 颜色，80% 本身不触发红色警告。Git 变更使用异步 `pi.exec("git", ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all", "-z"], { cwd, timeout: 1_000 })` 缓存读取，避免同步阻塞 footer render。
 
@@ -69,7 +69,7 @@
 
 - **中风险**：`setFooter()` 替换整个内置 footer。若只重画本插件字段，会造成内置信息和其他扩展状态回归。替代方案是以官方 custom-footer 示例为基线，并显式合并 `getExtensionStatuses()`。
 - **中风险**：API 没有承诺任意状态变化立即触发单独的 footer refresh。替代方案是依赖正常 UI render，并仅对官方提供订阅的 Git 分支主动 invalidate；Git 变更在 session start、tool result 和 message end 后异步刷新，不增加同步轮询。
-- **低风险**：超窄终端无法同时完整显示目录与上下文。替代方案是先省略非核心字段，再用官方 `truncateToWidth()` 保证不越界；不允许文本覆盖相邻 UI。
+- **低风险**：超窄终端无法完整显示 cwd、上下文和 token 统计。替代方案是分别对每一行使用官方 `truncateToWidth()` 保证不越界；不允许文本覆盖相邻 UI。
 
 ## 2. Serena session/tool 生命周期映射
 
@@ -172,11 +172,11 @@ Serena hooks 应覆盖：
 - 入口固定 `plugins/statusline/src/index.ts`。
 - `ctx.ui.setFooter()` 安装自定义 footer。
 - Git 使用 `footerData.getGitBranch()` + `onBranchChange()`，保存并调用退订函数。
-- cwd 用 `path.basename(ctx.cwd)`；session 名称用 `ctx.sessionManager.getSessionName()`，未设置时隐藏，并监听 `session_info_changed` 刷新；context 用 `tokens/contextWindow/percent`；模型显示 `provider/id`；thinking 用 `ctx.thinkingLevel`。
+- cwd 使用完整 `ctx.cwd`，home 前缀缩写为 `~`；session 名称用 `ctx.sessionManager.getSessionName()`，未设置时隐藏，并监听 `session_info_changed` 刷新；context 用 `tokens/contextWindow/percent`；模型显示 `provider/id`；thinking 用 `ctx.thinkingLevel`。
 - 图标增强但克制，缺失项隐藏。
-- 窄屏始终优先目录、分支、紧凑 Git 变更和上下文；累计 token 独占第二行，MCP 与 pi-lens LSP 状态位于第三行，各行最终统一 `truncateToWidth()`。
+- 第一行显示完整 cwd、session、分支、紧凑 Git 变更、模型和 thinking；上下文与累计 token/cache 统计独占第二行，MCP 与 pi-lens LSP 状态位于第三行，各行最终统一 `truncateToWidth()`。
 - 合并 `footerData.getExtensionStatuses()`，不能吞掉其他扩展状态；`pi-mcp-adapter` 的固定 status key `mcp` 将其 `🔌 MCP:` 前缀替换为 `󰒍 MCP:`，pi-lens 的 `pi-lens-lsp` 状态排在其右侧，保留状态文本和 ANSI 主题颜色。
-- 第二行 token 统计遍历公开 `ctx.sessionManager.getEntries()`，累计 assistant、tool result、compaction 和 branch summary 的 usage；输入显示 `↓`，输出显示 `↑`，缓存创建显示 `W`，缓存读取显示 `R`，使用 `K/M` 单位。有模型 token usage 时，即使 provider 返回零缓存数据也显示 `W0K R0K CH0.0%`；`CH` 表示最近一次模型请求的缓存命中率 `cacheRead / (input + cacheRead + cacheWrite)`。
+- 第二行上下文与 token 统计遍历公开 `ctx.sessionManager.getEntries()`，累计 assistant、tool result、compaction 和 branch summary 的 usage；输入显示 `↓`，输出显示 `↑`，缓存创建显示 `W`，缓存读取显示 `R`，使用 `K/M` 单位。有模型 token usage 时，即使 provider 返回零缓存数据也显示 `W0K R0K CH0.0%`；`CH` 表示最近一次模型请求的缓存命中率 `cacheRead / (input + cacheRead + cacheWrite)`。
 - Git 变更通过异步 `pi.exec()` 读取 porcelain 状态：未追踪显示蓝色 `!n`，未暂存工作区变更显示橙色 `!n`，暂存区变更显示橙色 `+n`；三个计数合并为无空格紧凑字段，分支使用绿色。
 
 ### `@lystran/pi-serena-hooks`

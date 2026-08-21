@@ -5,6 +5,7 @@ import {
   contextProgressIcon,
   contextUsageColor,
   formatContextUsage,
+  formatCwdForStatusline,
   formatGitChanges,
   formatSessionUsage,
   formatTokenCount,
@@ -21,9 +22,17 @@ const fields: StatuslineFields = {
   branch: "branch",
   model: "model",
   thinking: "think",
-  context: "ctx",
   statuses: ["one", "two"],
 };
+
+describe("formatCwdForStatusline", () => {
+  test("replaces only the home directory prefix", () => {
+    expect(formatCwdForStatusline("/Users/test/programming/ai/pi-extensions", "/Users/test")).toBe(
+      "~/programming/ai/pi-extensions",
+    );
+    expect(formatCwdForStatusline("/Users/tester/project", "/Users/test")).toBe("/Users/tester/project");
+  });
+});
 
 describe("formatContextUsage", () => {
   test("formats token counts in thousands", () => {
@@ -130,12 +139,12 @@ describe("extension status", () => {
 
 describe("layoutStatusline", () => {
   test("keeps all fields when they fit", () => {
-    expect(layoutStatusline(fields, 80)).toBe("dir  branch  model  think  ctx  one  two");
+    expect(layoutStatusline(fields, 80)).toBe("dir  branch  model  think  one  two");
   });
 
   test("includes a named session", () => {
     expect(layoutStatusline({ ...fields, session: "session" }, 100)).toBe(
-      "dir  session  branch  model  think  ctx  one  two",
+      "dir  session  branch  model  think  one  two",
     );
   });
   test("renders token usage separately from MCP and LSP statuses", () => {
@@ -143,32 +152,32 @@ describe("layoutStatusline", () => {
       layoutStatuslineLines(
         {
           ...fields,
+          context: "ctx",
           sessionUsage: "↓159K ↑1.2K",
           secondaryStatuses: ["󰒍 MCP: 3", "LSP Active: typescript"],
         },
         80,
       ),
-    ).toEqual(["dir  branch  model  think  ctx  one  two", "↓159K ↑1.2K", "󰒍 MCP: 3  LSP Active: typescript"]);
+    ).toEqual(["dir  branch  model  think  one  two", "ctx  ↓159K ↑1.2K", "󰒍 MCP: 3  LSP Active: typescript"]);
   });
 
   test("does not leave an empty token line", () => {
-    expect(layoutStatuslineLines({ ...fields, secondaryStatuses: ["󰒍 MCP: 3"] }, 80)).toEqual([
-      "dir  branch  model  think  ctx  one  two",
+    expect(layoutStatuslineLines({ ...fields, context: undefined, secondaryStatuses: ["󰒍 MCP: 3"] }, 80)).toEqual([
+      "dir  branch  model  think  one  two",
       "󰒍 MCP: 3",
     ]);
   });
 
   test("drops optional fields in priority order", () => {
-    expect(layoutStatusline(fields, 35)).toBe("dir  branch  model  think  ctx  one");
-    expect(layoutStatusline(fields, 30)).toBe("dir  branch  model  think  ctx");
-    expect(layoutStatusline(fields, 22)).toBe("dir  model  think  ctx");
-    expect(layoutStatusline(fields, 15)).toBe("dir  model  ctx");
-    expect(layoutStatusline(fields, 10)).toBe("dir  ctx");
+    expect(layoutStatusline(fields, 35)).toBe("dir  branch  model  think  one  two");
+    expect(layoutStatusline(fields, 30)).toBe("dir  branch  model  think  one");
+    expect(layoutStatusline(fields, 22)).toBe("dir  model  think");
+    expect(layoutStatusline(fields, 15)).toBe("dir  model");
+    expect(layoutStatusline(fields, 10)).toBe("dir  model");
   });
 
-  test("truncates the directory before the context", () => {
-    const line = layoutStatusline({ directory: "very-long-directory", context: "42k/128k", statuses: [] }, 15);
-    expect(line).toEndWith("  42k/128k");
+  test("truncates the full directory path", () => {
+    const line = layoutStatusline({ directory: "very-long-directory", statuses: [] }, 15);
     expect(visibleWidth(line)).toBeLessThanOrEqual(15);
   });
 });
