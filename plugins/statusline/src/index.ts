@@ -112,6 +112,8 @@ export function calculateSessionUsage(
       const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
       if (promptTokens > 0) {
         totals.latestCacheHitRate = (usage.cacheRead / promptTokens) * 100;
+      } else {
+        totals.latestCacheHitRate = 0;
       }
     }
   }
@@ -122,10 +124,12 @@ export function formatSessionUsage(totals: SessionUsageTotals): string | undefin
   const parts: string[] = [];
   if (totals.input > 0) parts.push(`↓${formatTokenCount(totals.input)}`);
   if (totals.output > 0) parts.push(`↑${formatTokenCount(totals.output)}`);
-  if (totals.cacheWrite > 0) parts.push(`W${formatTokenCount(totals.cacheWrite)}`);
-  if (totals.cacheRead > 0) parts.push(`R${formatTokenCount(totals.cacheRead)}`);
-  if ((totals.cacheWrite > 0 || totals.cacheRead > 0) && totals.latestCacheHitRate !== undefined) {
-    parts.push(`CH${totals.latestCacheHitRate.toFixed(1)}%`);
+  if (parts.length > 0) {
+    parts.push(`W${formatTokenCount(totals.cacheWrite)}`);
+    parts.push(`R${formatTokenCount(totals.cacheRead)}`);
+    if (totals.latestCacheHitRate !== undefined) {
+      parts.push(`CH${totals.latestCacheHitRate.toFixed(1)}%`);
+    }
   }
   return parts.length > 0 ? parts.join(" ") : undefined;
 }

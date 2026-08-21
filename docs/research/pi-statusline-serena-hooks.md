@@ -176,7 +176,7 @@ Serena hooks 应覆盖：
 - 图标增强但克制，缺失项隐藏。
 - 窄屏始终优先目录、分支、紧凑 Git 变更和上下文；累计 token 独占第二行，MCP 与 pi-lens LSP 状态位于第三行，各行最终统一 `truncateToWidth()`。
 - 合并 `footerData.getExtensionStatuses()`，不能吞掉其他扩展状态；`pi-mcp-adapter` 的固定 status key `mcp` 将其 `🔌 MCP:` 前缀替换为 `󰒍 MCP:`，pi-lens 的 `pi-lens-lsp` 状态排在其右侧，保留状态文本和 ANSI 主题颜色。
-- 第二行 token 统计遍历公开 `ctx.sessionManager.getEntries()`，累计 assistant、tool result、compaction 和 branch summary 的 usage；输入显示 `↓`，输出显示 `↑`，缓存创建显示 `W`，缓存读取显示 `R`，使用 `K/M` 单位。`CH` 表示最近一次模型请求的缓存命中率 `cacheRead / (input + cacheRead + cacheWrite)`；对应数据为零或不可用时隐藏。
+- 第二行 token 统计遍历公开 `ctx.sessionManager.getEntries()`，累计 assistant、tool result、compaction 和 branch summary 的 usage；输入显示 `↓`，输出显示 `↑`，缓存创建显示 `W`，缓存读取显示 `R`，使用 `K/M` 单位。有模型 token usage 时，即使 provider 返回零缓存数据也显示 `W0K R0K CH0.0%`；`CH` 表示最近一次模型请求的缓存命中率 `cacheRead / (input + cacheRead + cacheWrite)`。
 - Git 变更通过异步 `pi.exec()` 读取 porcelain 状态：未追踪显示蓝色 `!n`，未暂存工作区变更显示橙色 `!n`，暂存区变更显示橙色 `+n`；三个计数合并为无空格紧凑字段，分支使用绿色。
 
 ### `@lystran/pi-serena-hooks`

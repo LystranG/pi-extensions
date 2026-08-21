@@ -68,8 +68,10 @@ describe("session usage", () => {
     expect(formatSessionUsage(totals)).toBe("↓1.6K ↑550K W1K R8K CH80.0%");
   });
 
-  test("hides unavailable cache statistics", () => {
-    expect(formatSessionUsage({ input: 1_000, output: 200, cacheRead: 0, cacheWrite: 0 })).toBe("↓1K ↑0.2K");
+  test("shows zero cache statistics when token usage exists", () => {
+    expect(formatSessionUsage({ input: 1_000, output: 200, cacheRead: 0, cacheWrite: 0, latestCacheHitRate: 0 })).toBe(
+      "↓1K ↑0.2K W0K R0K CH0.0%",
+    );
     expect(formatSessionUsage({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })).toBeUndefined();
   });
 });
