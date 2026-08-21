@@ -51,7 +51,7 @@ describe("context progress", () => {
 
 describe("git status", () => {
   test("formats Git counts as one compact field", () => {
-    expect(formatGitChanges({ untracked: 2, unstaged: 1, staged: 3 }, (_color, text) => text)).toBe("!2 !1 +3");
+    expect(formatGitChanges({ untracked: 2, unstaged: 1, staged: 3 }, (_color, text) => text)).toBe("!2!1+3");
   });
 
   test("counts untracked, unstaged, and staged entries", () => {
@@ -83,11 +83,17 @@ describe("layoutStatusline", () => {
       "dir  session  branch  model  think  ctx  one  two",
     );
   });
-  test("moves secondary statuses to a second line", () => {
-    expect(layoutStatuslineLines({ ...fields, secondaryStatuses: ["󰒍 MCP: 3"] }, 80)).toEqual([
-      "dir  branch  model  think  ctx  one  two",
-      "󰒍 MCP: 3",
-    ]);
+  test("moves pi-lens and MCP statuses to separate lines", () => {
+    expect(
+      layoutStatuslineLines(
+        {
+          ...fields,
+          secondaryStatuses: ["pi-lens: 2"],
+          tertiaryStatuses: ["󰒍 MCP: 3"],
+        },
+        80,
+      ),
+    ).toEqual(["dir  branch  model  think  ctx  one  two", "pi-lens: 2", "󰒍 MCP: 3"]);
   });
 
   test("drops optional fields in priority order", () => {
