@@ -1,0 +1,25 @@
+{
+  "name": "@lystran/pi-guard",
+  "version": "0.0.0",
+  "description": "Protect Pi shell tool calls with configurable command guard rules",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pi-package", "pi-extension", "security", "command-guard"],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": ["src", "README.md"],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.84.2"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@types/bun": "^1.3.0"
+  }
+}
