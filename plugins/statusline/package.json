@@ -1,6 +1,6 @@
 {
   "name": "@lystran/pi-statusline",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A compact statusline for Pi coding agent",
   "type": "module",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@lystran/pi-serena-hooks",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Run Serena lifecycle hooks from Pi coding agent",
   "type": "module",
   "license": "MIT",
