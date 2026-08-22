@@ -3,6 +3,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const SEPARATOR = " · ";
 const INPUT_PROMPT = "❯ ";
+const SECONDARY_STATUS_KEYS = ["mcp", "pi-lens-lsp"] as const;
 
 export interface ContextUsageValue {
   tokens: number | null;
@@ -285,12 +286,13 @@ export function groupExtensionStatuses(entries: ReadonlyArray<readonly [string, 
   primary: string[];
   secondary: string[];
 } {
-  const secondaryKeys = new Set(["mcp", "pi-lens-lsp"]);
+  const secondaryKeys = new Set<string>(SECONDARY_STATUS_KEYS);
   const primary = entries
+    // 未知 key 仍然保留在主状态行，避免第三方改名后状态消失
     .filter(([key]) => !secondaryKeys.has(key))
     .map(([key, value]) => normalizeExtensionStatus(key, value))
     .filter(Boolean);
-  const secondary = ["mcp", "pi-lens-lsp"].flatMap((statusKey) => {
+  const secondary = SECONDARY_STATUS_KEYS.flatMap((statusKey) => {
     const entry = entries.find(([key]) => key === statusKey);
     return entry ? [normalizeExtensionStatus(entry[0], entry[1])] : [];
   });

@@ -143,6 +143,18 @@ describe("extension status", () => {
     );
     expect(normalizeExtensionStatus("other", "🔌 MCP: unrelated")).toBe("🔌 MCP: unrelated");
   });
+
+  test("keeps renamed extension statuses instead of dropping them", () => {
+    expect(
+      groupExtensionStatuses([
+        ["pi-mcp", "🔌 MCP: 3 servers"],
+        ["pi-lens-language-server", "LSP Active: typescript"],
+      ]),
+    ).toEqual({
+      primary: ["🔌 MCP: 3 servers", "LSP Active: typescript"],
+      secondary: [],
+    });
+  });
 });
 
 describe("layoutStatusline", () => {
