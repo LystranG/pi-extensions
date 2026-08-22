@@ -2,6 +2,10 @@
   "name": "@lystran/pi-statusline",
   "version": "0.1.0",
   "description": "A compact statusline for Pi coding agent",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LystranG/pi-extensions"
+  },
   "type": "module",
   "license": "MIT",
   "keywords": ["pi-package", "pi-extension", "statusline"],

@@ -2,6 +2,10 @@
   "name": "@lystran/pi-serena-hooks",
   "version": "0.1.0",
   "description": "Run Serena lifecycle hooks from Pi coding agent",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LystranG/pi-extensions"
+  },
   "type": "module",
   "license": "MIT",
   "keywords": ["pi-package", "pi-extension", "serena"],
