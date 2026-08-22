@@ -8,7 +8,9 @@ import {
   formatCwdForStatusline,
   formatGitChanges,
   formatSessionUsage,
+  formatStatuslineDateTime,
   formatTokenCount,
+  frameStatuslineLines,
   groupExtensionStatuses,
   layoutStatusline,
   layoutStatuslineLines,
@@ -31,6 +33,12 @@ describe("formatCwdForStatusline", () => {
       "~/programming/ai/pi-extensions",
     );
     expect(formatCwdForStatusline("/Users/tester/project", "/Users/test")).toBe("/Users/tester/project");
+  });
+});
+
+describe("formatStatuslineDateTime", () => {
+  test("formats local date and time to minutes", () => {
+    expect(formatStatuslineDateTime(new Date(2026, 7, 21, 9, 5, 42))).toBe("2026-08-21 09:05");
   });
 });
 
@@ -158,14 +166,29 @@ describe("layoutStatusline", () => {
         },
         80,
       ),
-    ).toEqual(["dir · branch · model · think · one · two", "ctx · ↓159K ↑1.2K", "󰒍 MCP: 3 · LSP Active: typescript"]);
+    ).toEqual([
+      "╭ dir · branch · model · think · one · two ────────────────────────────────────╮",
+      "│ ctx · ↓159K ↑1.2K                                                            │",
+      "╰ 󰒍 MCP: 3 · LSP Active: typescript ───────────────────────────────────────────╯",
+    ]);
   });
 
   test("does not leave an empty token line", () => {
     expect(layoutStatuslineLines({ ...fields, context: undefined, secondaryStatuses: ["󰒍 MCP: 3"] }, 80)).toEqual([
-      "dir · branch · model · think · one · two",
-      "󰒍 MCP: 3",
+      "╭ dir · branch · model · think · one · two ────────────────────────────────────╮",
+      "╰ 󰒍 MCP: 3 ────────────────────────────────────────────────────────────────────╯",
     ]);
+  });
+
+  test("shows the date on wide terminals and hides it on narrow terminals", () => {
+    const topRight = "󰃭 2026-08-21 09:05";
+    const [wideLine] = layoutStatuslineLines({ ...fields, topRight }, 80);
+    const [narrowLine] = layoutStatuslineLines({ ...fields, topRight }, 30);
+
+    expect(wideLine).toContain(`${topRight} ╮`);
+    expect(narrowLine).not.toContain(topRight);
+    expect(visibleWidth(wideLine ?? "")).toBe(80);
+    expect(visibleWidth(narrowLine ?? "")).toBe(30);
   });
 
   test("drops optional fields in priority order", () => {
@@ -179,5 +202,32 @@ describe("layoutStatusline", () => {
   test("truncates the full directory path", () => {
     const line = layoutStatusline({ directory: "very-long-directory", statuses: [] }, 15);
     expect(visibleWidth(line)).toBeLessThanOrEqual(15);
+  });
+});
+
+describe("frameStatuslineLines", () => {
+  test("fills every framed line to the requested width", () => {
+    const lines = frameStatuslineLines(["main", "context", "extensions"], 30);
+
+    expect(lines).toEqual([
+      "╭ main ──────────────────────╮",
+      "│ context                    │",
+      "╰ extensions ────────────────╯",
+    ]);
+    expect(lines.every((line) => visibleWidth(line) === 30)).toBe(true);
+  });
+
+  test("places date and time against the right border with a small gap", () => {
+    const [line] = frameStatuslineLines(["main"], 40, (text) => text, "󰃭 2026-08-21 09:05");
+
+    expect(line).toBe("╭ main ──────────── 󰃭 2026-08-21 09:05 ╮");
+    expect(visibleWidth(line ?? "")).toBe(40);
+  });
+
+  test("falls back to plain truncated content in extremely narrow terminals", () => {
+    const [line] = frameStatuslineLines(["status"], 3);
+
+    expect(line?.startsWith("sta")).toBe(true);
+    expect(visibleWidth(line ?? "")).toBe(3);
   });
 });

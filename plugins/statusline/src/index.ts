@@ -12,6 +12,7 @@ export interface ContextUsageValue {
 
 export interface StatuslineFields {
   directory: string;
+  topRight?: string | undefined;
   session?: string | undefined;
   branch?: string | undefined;
   model?: string | undefined;
@@ -38,6 +39,12 @@ export interface TokenUsageValue {
 
 export interface SessionUsageTotals extends TokenUsageValue {
   latestCacheHitRate?: number;
+}
+
+// 将本地日期时间格式化到分钟
+export function formatStatuslineDateTime(date: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 // 为默认编辑器保留完整交互能力，只替换输入行左侧的提示符
@@ -212,15 +219,61 @@ export function layoutStatusline(fields: StatuslineFields, width: number): strin
   return truncateToWidth(fields.directory, width);
 }
 
-export function layoutStatuslineLines(fields: StatuslineFields, width: number): string[] {
-  const lines = [layoutStatusline(fields, width)];
-  if (width > 0 && (fields.context || fields.sessionUsage)) {
-    lines.push(truncateToWidth(joinFields([fields.context ?? "", fields.sessionUsage ?? ""]), width));
+export function layoutStatuslineLines(
+  fields: StatuslineFields,
+  width: number,
+  colorizeBorder: (text: string) => string = (text) => text,
+): string[] {
+  if (width <= 0) return [""];
+
+  const contentWidth = Math.max(0, width - 3);
+  const topRightWidth = visibleWidth(fields.topRight ?? "");
+  const showTopRight = topRightWidth > 0 && contentWidth >= topRightWidth + 12;
+  const primaryContentWidth = showTopRight ? contentWidth - topRightWidth - 3 : contentWidth;
+  const lines = [layoutStatusline(fields, primaryContentWidth)];
+  if (fields.context || fields.sessionUsage) {
+    lines.push(truncateToWidth(joinFields([fields.context ?? "", fields.sessionUsage ?? ""]), contentWidth));
   }
-  if (width > 0 && fields.secondaryStatuses && fields.secondaryStatuses.length > 0) {
-    lines.push(truncateToWidth(joinFields(fields.secondaryStatuses), width));
+  if (fields.secondaryStatuses && fields.secondaryStatuses.length > 0) {
+    lines.push(truncateToWidth(joinFields(fields.secondaryStatuses), contentWidth));
   }
-  return lines;
+  return frameStatuslineLines(lines, width, colorizeBorder, showTopRight ? fields.topRight : undefined);
+}
+
+// 将多行状态内容嵌入与终端等宽的圆角边框
+export function frameStatuslineLines(
+  lines: string[],
+  width: number,
+  colorizeBorder: (text: string) => string = (text) => text,
+  topRight?: string,
+): string[] {
+  if (width <= 0) return [""];
+  if (width < 4) return lines.map((line) => truncateToWidth(line, width, ""));
+
+  const contentWidth = width - 3;
+  return lines.map((line, index) => {
+    const content = truncateToWidth(line, contentWidth, "");
+    const remainingWidth = Math.max(0, contentWidth - visibleWidth(content));
+    const isFirst = index === 0;
+    const isLast = index === lines.length - 1;
+
+    if (isFirst || isLast) {
+      const left = isFirst ? "╭" : "╰";
+      const right = isFirst ? "╮" : "╯";
+      if (isFirst && topRight) {
+        const rightText = truncateToWidth(topRight, Math.max(0, remainingWidth - 2), "");
+        const rightWidth = visibleWidth(rightText);
+        const fillWidth = Math.max(0, remainingWidth - rightWidth - 1);
+        const fill = fillWidth > 1 ? ` ${"─".repeat(fillWidth - 2)} ` : " ".repeat(fillWidth);
+        return `${colorizeBorder(left)} ${content}${colorizeBorder(fill)}${rightText} ${colorizeBorder(right)}`;
+      }
+
+      const fill = remainingWidth > 0 ? ` ${"─".repeat(remainingWidth - 1)}` : "";
+      return `${colorizeBorder(left)} ${content}${colorizeBorder(`${fill}${right}`)}`;
+    }
+
+    return `${colorizeBorder("│")} ${content}${" ".repeat(remainingWidth)}${colorizeBorder("│")}`;
+  });
 }
 
 export function normalizeExtensionStatus(key: string, value: string): string {
@@ -258,9 +311,19 @@ export function formatGitChanges(
 export default function statuslineExtension(pi: ExtensionAPI): void {
   let requestRender: (() => void) | undefined;
   let refreshGitStatus: (() => void) | undefined;
+  let clockRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   let gitChanges: GitChangeCounts = { untracked: 0, unstaged: 0, staged: 0 };
   let gitRefreshId = 0;
   const refresh = () => requestRender?.();
+  // 对齐到下一分钟刷新，避免状态栏时间长期停留在旧值
+  const scheduleClockRefresh = () => {
+    if (clockRefreshTimer) clearTimeout(clockRefreshTimer);
+    const delay = 60_000 - (Date.now() % 60_000) + 25;
+    clockRefreshTimer = setTimeout(() => {
+      refresh();
+      scheduleClockRefresh();
+    }, delay);
+  };
   const updateGitStatus = async (cwd: string): Promise<void> => {
     const refreshId = ++gitRefreshId;
     try {
@@ -290,6 +353,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
       const prompt = ctx.ui.theme.fg("accent", INPUT_PROMPT);
       return new PromptEditor(tui, theme, keybindings, prompt);
     });
+    scheduleClockRefresh();
     refreshGitStatus = () => void updateGitStatus(ctx.cwd);
     gitChanges = { untracked: 0, unstaged: 0, staged: 0 };
     void updateGitStatus(ctx.cwd);
@@ -324,6 +388,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
 
           const fields: StatuslineFields = {
             directory: theme.fg("accent", `󰉋 ${directory}`),
+            topRight: theme.fg("muted", `󰃭 ${formatStatuslineDateTime(new Date())}`),
             session: sessionName ? theme.fg("muted", `◈ ${sessionName}`) : undefined,
             branch: branch ? theme.fg("success", ` ${branch}`) : undefined,
             git: formatGitChanges(gitChanges, (color, text) => theme.fg(color, text)),
@@ -335,7 +400,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
             secondaryStatuses,
           };
 
-          return layoutStatuslineLines(fields, width);
+          return layoutStatuslineLines(fields, width, (text) => theme.fg("borderMuted", text));
         },
       };
     });
@@ -355,6 +420,8 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
   pi.on("session_compact", refresh);
   pi.on("session_shutdown", () => {
     gitRefreshId++;
+    if (clockRefreshTimer) clearTimeout(clockRefreshTimer);
+    clockRefreshTimer = undefined;
     refreshGitStatus = undefined;
     requestRender = undefined;
   });
