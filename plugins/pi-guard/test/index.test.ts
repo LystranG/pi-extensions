@@ -92,4 +92,22 @@ describe("configuration", () => {
     );
     expect(result.deny).toBe(false);
   });
+
+  test("allows a configured confirmation rule to override dcg allow", async () => {
+    let checked = false;
+    const result = await decideToolCall(
+      "rm -rf /tmp/build",
+      {
+        ...config,
+        rules: [{ command: "rm -rf *", mode: "confirm" }],
+      },
+      async () => {
+        checked = true;
+        return { deny: false, reason: "" };
+      },
+      { hasUI: true, ui },
+    );
+    expect(checked).toBe(true);
+    expect(result.deny).toBe(false);
+  });
 });
