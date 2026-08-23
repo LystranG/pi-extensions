@@ -51,6 +51,25 @@ describe("Maven output summary", () => {
     expect(summary.details.findings.length).toBeGreaterThanOrEqual(2);
   });
 
+  test("does not report PASS when Maven ignores test failures", () => {
+    const summary = summarizeMavenOutput({
+      args: ["test", "-DtestFailureIgnore=true"],
+      status: "completed",
+      executable: "./mvnw",
+      cwd: "/workspace",
+      exitCode: 0,
+      signal: null,
+      output: "[ERROR] Tests run: 37, Failures: 0, Errors: 20, Skipped: 0\n[INFO] BUILD SUCCESS\n",
+      durationMs: 1000,
+      logPath: "/workspace/.agent-logs/maven/maven.log",
+    });
+
+    expect(summary.status).toBe("failed");
+    expect(summary.text).toContain("FAIL");
+    expect(summary.text).toContain("20 errors");
+    expect(summary.text).toContain("Exit code: 0");
+  });
+
   test("falls back to bounded head and tail for unknown failures", () => {
     const summary = summarizeMavenOutput({
       args: ["verify"],

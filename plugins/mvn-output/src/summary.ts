@@ -24,6 +24,13 @@ const FINDING_PRIORITY: MavenFindingKind[] = [
 const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
 const NULL_CHARACTER = new RegExp(String.fromCharCode(0), "g");
 
+interface MavenTestCounts {
+  tests: number;
+  failures: number;
+  errors: number;
+  skipped: number;
+}
+
 /** 移除终端控制序列并把覆盖行转换为普通文本 */
 export function normalizeMavenOutput(output: string): string {
   return output
@@ -57,14 +64,26 @@ function extractTotalTime(lines: readonly string[]): string | undefined {
   return matches.at(-1);
 }
 
-/** 从 Maven 文本中提取测试计数 */
-function extractTestCounts(lines: readonly string[]): string | undefined {
-  const matches = lines
-    .map((line) => line.match(/Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)/i))
-    .filter((match): match is RegExpMatchArray => Boolean(match));
-  const match = matches.at(-1);
-  if (!match) return undefined;
-  return `${match[1]} tests, ${match[2]} failures, ${match[3]} errors, ${match[4]} skipped`;
+/** 从 Maven 文本中聚合 Surefire/Failsafe 测试计数 */
+function extractTestCounts(lines: readonly string[]): MavenTestCounts | undefined {
+  const totals: MavenTestCounts = { tests: 0, failures: 0, errors: 0, skipped: 0 };
+  let found = false;
+  for (const line of lines) {
+    const match = line.match(/Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)/i);
+    if (!match) continue;
+    found = true;
+    totals.tests += Number(match[1]);
+    totals.failures += Number(match[2]);
+    totals.errors += Number(match[3]);
+    totals.skipped += Number(match[4]);
+  }
+  return found ? totals : undefined;
+}
+
+/** 格式化测试计数摘要 */
+function formatTestCounts(counts: MavenTestCounts | undefined): string | undefined {
+  if (!counts) return undefined;
+  return `${counts.tests} tests, ${counts.failures} failures, ${counts.errors} errors, ${counts.skipped} skipped`;
 }
 
 /** 对可能包含凭据的 Maven 参数做最小脱敏 */
@@ -171,8 +190,9 @@ export function summarizeMavenOutput(
   const reportPaths = result.reportPaths ?? [];
   const totalTime = extractTotalTime(lines) ?? `${(result.durationMs / 1000).toFixed(1)} s`;
   const testCounts = extractTestCounts(lines);
+  const testFailuresIgnored = Boolean(testCounts && (testCounts.failures > 0 || testCounts.errors > 0));
   const warningCount = lines.filter((line) => /^\s*\[(?:WARNING|WARN)\]/i.test(line)).length;
-  const failed = result.status !== "completed" || result.exitCode !== 0;
+  const failed = result.status !== "completed" || result.exitCode !== 0 || testFailuresIgnored;
   const details: MavenToolDetails = {
     status: failed ? "failed" : "passed",
     exitCode: result.exitCode,
@@ -189,7 +209,9 @@ export function summarizeMavenOutput(
   };
 
   if (!failed) {
-    const suffix = [testCounts, warningCount > 0 ? `${warningCount} warnings` : undefined].filter(Boolean).join(", ");
+    const suffix = [formatTestCounts(testCounts), warningCount > 0 ? `${warningCount} warnings` : undefined]
+      .filter(Boolean)
+      .join(", ");
     return {
       status: "passed",
       text: limitBytes(
@@ -209,14 +231,11 @@ export function summarizeMavenOutput(
       ].join("\n")
     : fallbackText(lines);
   const reportsText = reportPaths.length ? `\n\nReports:\n${reportPaths.map((path) => `- ${path}`).join("\n")}` : "";
-  const text = [
-    `FAIL · ${result.exitCode === null ? result.status : `exit code ${result.exitCode}`}`,
-    "",
-    findingText,
-    reportsText,
-    "",
-    formatExecutionMetadata(result),
-  ].join("\n");
+  const statusText =
+    testFailuresIgnored && result.exitCode === 0
+      ? `FAIL · tests reported ${testFailuresIgnored ? `${testCounts?.failures ?? 0} failures and ${testCounts?.errors ?? 0} errors` : "failures"} (Maven exit code 0)`
+      : `FAIL · ${result.exitCode === null ? result.status : `exit code ${result.exitCode}`}`;
+  const text = [statusText, "", findingText, reportsText, "", formatExecutionMetadata(result)].join("\n");
 
   return { status: "failed", text: limitBytes(text, MAX_SUMMARY_BYTES), details };
 }
