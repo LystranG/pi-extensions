@@ -18,6 +18,8 @@ describe("Maven output summary", () => {
     expect(summary.status).toBe("passed");
     expect(summary.text).toContain("PASS");
     expect(summary.text).toContain("2.345 s");
+    expect(summary.text).toContain("Executable: ./mvnw");
+    expect(summary.text).toContain("Args: clean test");
     expect(summary.text).not.toContain("Tests run:");
   });
 
@@ -45,6 +47,7 @@ describe("Maven output summary", () => {
     expect(summary.text).toContain("Compiler");
     expect(summary.text).toContain("Test");
     expect(summary.text).toContain("target/surefire-reports");
+    expect(summary.text).toContain("Exit code: 1");
     expect(summary.details.findings.length).toBeGreaterThanOrEqual(2);
   });
 

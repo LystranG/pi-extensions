@@ -67,6 +67,26 @@ function extractTestCounts(lines: readonly string[]): string | undefined {
   return `${match[1]} tests, ${match[2]} failures, ${match[3]} errors, ${match[4]} skipped`;
 }
 
+/** 对可能包含凭据的 Maven 参数做最小脱敏 */
+function redactArgument(argument: string): string {
+  if (!/(?:password|passphrase|token|secret|api[-_.]?key|access[-_.]?key)/i.test(argument)) return argument;
+  const separator = argument.indexOf("=");
+  return separator >= 0 ? `${argument.slice(0, separator + 1)}<redacted>` : "<redacted>";
+}
+
+/** 构造供 AI 读取的执行元数据 */
+export function formatExecutionMetadata(
+  result: Pick<MavenExecutionResult, "args" | "executable" | "exitCode" | "logPath">,
+): string {
+  return [
+    "Maven execution:",
+    `- Executable: ${result.executable}`,
+    `- Args: ${result.args.map(redactArgument).join(" ")}`,
+    `- Exit code: ${result.exitCode ?? "none"}`,
+    `- Full log: ${result.logPath}`,
+  ].join("\n");
+}
+
 /** 对 Maven 错误行进行分类和去重 */
 function collectFindings(lines: readonly string[]): MavenFinding[] {
   const findings: MavenFinding[] = [];
@@ -172,7 +192,10 @@ export function summarizeMavenOutput(
     const suffix = [testCounts, warningCount > 0 ? `${warningCount} warnings` : undefined].filter(Boolean).join(", ");
     return {
       status: "passed",
-      text: limitBytes(`PASS${suffix ? ` · ${suffix}` : ""} · ${totalTime}`, MAX_SUMMARY_BYTES),
+      text: limitBytes(
+        [`PASS${suffix ? ` · ${suffix}` : ""} · ${totalTime}`, "", formatExecutionMetadata(result)].join("\n"),
+        MAX_SUMMARY_BYTES,
+      ),
       details,
     };
   }
@@ -192,7 +215,7 @@ export function summarizeMavenOutput(
     findingText,
     reportsText,
     "",
-    `Full Maven log: ${result.logPath}`,
+    formatExecutionMetadata(result),
   ].join("\n");
 
   return { status: "failed", text: limitBytes(text, MAX_SUMMARY_BYTES), details };

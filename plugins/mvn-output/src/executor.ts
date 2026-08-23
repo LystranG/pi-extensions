@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { buildMavenArguments, resolveMavenExecutable, shouldUseFullOutput } from "./command.ts";
 import { DEFAULT_LOG_DIRECTORY, DEFAULT_TIMEOUT_MS } from "./constants.ts";
 import { discoverMavenReportPaths } from "./reports.ts";
-import { summarizeMavenOutput } from "./summary.ts";
+import { formatExecutionMetadata, summarizeMavenOutput } from "./summary.ts";
 import type { MavenExecutionResult, MavenOutputMode, MavenSummary } from "./types.ts";
 
 /** 为 Maven 执行创建私有日志文件 */
@@ -106,7 +106,7 @@ export async function executeMaven(
   if (effectiveMode === "full") {
     return {
       status: "full",
-      text: await readFile(execution.logPath, "utf8"),
+      text: `${await readFile(execution.logPath, "utf8")}\n\n${formatExecutionMetadata(execution)}`,
       execution,
     };
   }
