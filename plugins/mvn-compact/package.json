@@ -1,5 +1,5 @@
 {
-  "name": "@lystran/pi-mvn-output",
+  "name": "@lystran/pi-mvn-compact",
   "version": "0.1.0",
   "description": "Compact Maven output for Pi coding agent",
   "repository": {

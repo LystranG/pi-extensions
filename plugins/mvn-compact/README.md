@@ -1,4 +1,4 @@
-# @lystran/pi-mvn-output
+# @lystran/pi-mvn-compact
 
 给 Pi coding agent 提供 Maven 工具，压缩 Maven 的高噪声命令输出
 

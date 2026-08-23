@@ -12,7 +12,7 @@ afterEach(async () => {
 
 describe("Maven executor", () => {
   test("prefers an executable project mvnw and preserves the failed log", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "pi-mvn-output-"));
+    const cwd = await mkdtemp(join(tmpdir(), "pi-mvn-compact-"));
     temporaryDirectories.push(cwd);
     const wrapper = join(cwd, "mvnw");
     await writeFile(

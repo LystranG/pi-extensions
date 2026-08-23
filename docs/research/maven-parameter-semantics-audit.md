@@ -1,4 +1,4 @@
-# Maven 参数语义审计：`@lystran/pi-mvn-output`
+# Maven 参数语义审计：`@lystran/pi-mvn-compact`
 
 > 研究范围：Maven CLI、Surefire/Failsafe、Reactor 以及可借鉴的紧凑输出实现。本文只做研究，不修改生产代码。关键结论按【事实】【风险】【建议】标注。官方事实优先引用 Apache 官方参考；经验性判断明确标为启发式。
 
@@ -10,7 +10,7 @@
 
 ## 当前代码基线
 
-【事实】[plugins/mvn-output/src/command.ts](../plugins/mvn-output/src/command.ts) 只检测 batch、transfer progress、color；compact 模式只注入三项。没有检测 quiet/debug/errors/log-file/failure mode/测试筛选或 reactor 参数。【事实】[plugins/mvn-output/src/executor.ts](../plugins/mvn-output/src/executor.ts) 将两个 pipe 合并到同一个 `output` 和私有日志，但没有保存 stdout/stderr 的来源；`-l` 时 Maven 自己将所有构建输出写到用户指定文件，插件仍建立另一份日志。【事实】[plugins/mvn-output/src/summary.ts](../plugins/mvn-output/src/summary.ts) 累加所有匹配 `Tests run:` 的行，依据 `exitCode !== 0` 或 failures/errors > 0 判定失败；没有读取 XML 内容。【事实】[plugins/mvn-output/src/reports.ts](../plugins/mvn-output/src/reports.ts) 仅发现目录，不验证报告是否属于本次执行、是否为空、是否禁用 XML 或报告是否过期。
+【事实】[plugins/mvn-compact/src/command.ts](../plugins/mvn-compact/src/command.ts) 只检测 batch、transfer progress、color；compact 模式只注入三项。没有检测 quiet/debug/errors/log-file/failure mode/测试筛选或 reactor 参数。【事实】[plugins/mvn-compact/src/executor.ts](../plugins/mvn-compact/src/executor.ts) 将两个 pipe 合并到同一个 `output` 和私有日志，但没有保存 stdout/stderr 的来源；`-l` 时 Maven 自己将所有构建输出写到用户指定文件，插件仍建立另一份日志。【事实】[plugins/mvn-compact/src/summary.ts](../plugins/mvn-compact/src/summary.ts) 累加所有匹配 `Tests run:` 的行，依据 `exitCode !== 0` 或 failures/errors > 0 判定失败；没有读取 XML 内容。【事实】[plugins/mvn-compact/src/reports.ts](../plugins/mvn-compact/src/reports.ts) 仅发现目录，不验证报告是否属于本次执行、是否为空、是否禁用 XML 或报告是否过期。
 
 ## 参数/语义审计表
 
@@ -161,7 +161,7 @@
     {
       "id": "criterion-1",
       "status": "satisfied",
-      "evidence": "已审计 plugins/mvn-output/src/command.ts、executor.ts、summary.ts、reports.ts，并将参数级风险与文件路径写入本报告"
+      "evidence": "已审计 plugins/mvn-compact/src/command.ts、executor.ts、summary.ts、reports.ts，并将参数级风险与文件路径写入本报告"
     }
   ],
   "changedFiles": [
@@ -180,9 +180,9 @@
   "noStagedFiles": true,
   "diffSummary": "仅生成研究报告 research.md，未修改生产代码",
   "reviewFindings": [
-    "P0: plugins/mvn-output/src/command.ts 未处理 -fn、测试跳过/忽略和报告配置，可能把 exit 0 的未验证结果显示为 PASS",
-    "P0: plugins/mvn-output/src/summary.ts 仅累加文本 Tests run，无法可靠处理并行、重试、部分 reactor 和重复摘要",
-    "P1: plugins/mvn-output/src/executor.ts 合并 stdout/stderr 且未区分 -l 用户日志与插件日志"
+    "P0: plugins/mvn-compact/src/command.ts 未处理 -fn、测试跳过/忽略和报告配置，可能把 exit 0 的未验证结果显示为 PASS",
+    "P0: plugins/mvn-compact/src/summary.ts 仅累加文本 Tests run，无法可靠处理并行、重试、部分 reactor 和重复摘要",
+    "P1: plugins/mvn-compact/src/executor.ts 合并 stdout/stderr 且未区分 -l 用户日志与插件日志"
   ],
   "manualNotes": "建议维护者提供 mvn-lite 的确切 URL/commit，并按报告中的 fake Maven/真实项目矩阵补充验证"
 }

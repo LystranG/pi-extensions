@@ -12,8 +12,8 @@
         "typescript": "7.0.2",
       },
     },
-    "plugins/mvn-output": {
-      "name": "@lystran/pi-mvn-output",
+    "plugins/mvn-compact": {
+      "name": "@lystran/pi-mvn-compact",
       "version": "0.1.0",
       "dependencies": {
         "@earendil-works/pi-ai": ">=0.84.2",
@@ -185,7 +185,7 @@
 
     "@lystran/pi-guard": ["@lystran/pi-guard@workspace:plugins/pi-guard"],
 
-    "@lystran/pi-mvn-output": ["@lystran/pi-mvn-output@workspace:plugins/mvn-output"],
+    "@lystran/pi-mvn-compact": ["@lystran/pi-mvn-compact@workspace:plugins/mvn-compact"],
 
     "@lystran/pi-serena-hooks": ["@lystran/pi-serena-hooks@workspace:plugins/serena-hooks"],
 

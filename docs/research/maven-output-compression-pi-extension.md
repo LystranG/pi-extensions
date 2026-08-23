@@ -48,14 +48,14 @@
 
 ### MVP API 与配置
 
-建议包名 `@lystran/pi-mvn-output`，入口 `src/index.ts`，只使用 Pi 公开导出。MVP API：
+建议包名 `@lystran/pi-mvn-compact`，入口 `src/index.ts`，只使用 Pi 公开导出。MVP API：
 
 ```text
 /mvn [--full|--keep-log] [--] <maven argv...>
 pi.registerTool: mvn(args: string[], mode?: "compact"|"full", timeoutMs?: number)
 ```
 
-默认配置（项目级 `.pi/mvn-output.json`，可选全局设置覆盖）建议：
+默认配置（项目级 `.pi/mvn-compact.json`，可选全局设置覆盖）建议：
 
 ```json
 {
