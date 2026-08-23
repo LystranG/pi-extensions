@@ -6,6 +6,7 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildMavenArguments, resolveMavenExecutable, shouldUseFullOutput } from "./command.ts";
 import { DEFAULT_LOG_DIRECTORY, DEFAULT_TIMEOUT_MS } from "./constants.ts";
+import { analyzeMavenArguments } from "./options.ts";
 import { discoverMavenReportPaths } from "./reports.ts";
 import { formatExecutionMetadata, summarizeMavenOutput } from "./summary.ts";
 import type { MavenExecutionResult, MavenOutputMode, MavenSummary } from "./types.ts";
@@ -110,6 +111,7 @@ export async function executeMaven(
       execution,
     };
   }
-  const reportPaths = await discoverMavenReportPaths(cwd);
+  const analysis = analyzeMavenArguments(execution.args);
+  const reportPaths = await discoverMavenReportPaths(cwd, analysis.reportsDirectory ? [analysis.reportsDirectory] : []);
   return summarizeMavenOutput({ ...execution, reportPaths });
 }

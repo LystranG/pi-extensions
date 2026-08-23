@@ -4,6 +4,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_TIMEOUT_MS } from "./constants.ts";
 import { executeMaven } from "./executor.ts";
+import { analyzeMavenArguments } from "./options.ts";
 import { isMavenProject } from "./project.ts";
 import type { MavenToolDetails, MavenToolParams } from "./types.ts";
 
@@ -57,6 +58,7 @@ export function registerMavenTool(pi: Pick<ExtensionAPI, "registerTool">): void 
           findings: [{ kind: "invocation", message: "pom.xml not found; this is not a Maven project" }],
           reportPaths: [],
           warningCount: 0,
+          argumentAnalysis: analyzeMavenArguments(toolParams.args),
         };
         return {
           content: [{ type: "text", text: "Maven tool skipped: pom.xml was not found in the current directory." }],
@@ -80,7 +82,7 @@ export function registerMavenTool(pi: Pick<ExtensionAPI, "registerTool">): void 
       return {
         content: [{ type: "text", text: result.text }],
         details: result.details satisfies MavenToolDetails,
-        isError: result.status === "failed",
+        isError: ["failed", "incomplete", "unknown"].includes(result.status),
       };
     },
   });

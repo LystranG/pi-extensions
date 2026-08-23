@@ -7,7 +7,16 @@ import {
   MAX_FINDINGS_PER_KIND,
   MAX_SUMMARY_BYTES,
 } from "./constants.ts";
-import type { MavenExecutionResult, MavenFinding, MavenFindingKind, MavenSummary, MavenToolDetails } from "./types.ts";
+import { analyzeMavenArguments } from "./options.ts";
+import type {
+  MavenExecutionResult,
+  MavenFinding,
+  MavenFindingKind,
+  MavenResultStatus,
+  MavenSummary,
+  MavenTestCounts,
+  MavenToolDetails,
+} from "./types.ts";
 
 const FINDING_PRIORITY: MavenFindingKind[] = [
   "invocation",
@@ -23,13 +32,6 @@ const FINDING_PRIORITY: MavenFindingKind[] = [
 ];
 const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
 const NULL_CHARACTER = new RegExp(String.fromCharCode(0), "g");
-
-interface MavenTestCounts {
-  tests: number;
-  failures: number;
-  errors: number;
-  skipped: number;
-}
 
 /** 移除终端控制序列并把覆盖行转换为普通文本 */
 export function normalizeMavenOutput(output: string): string {
@@ -84,6 +86,23 @@ function extractTestCounts(lines: readonly string[]): MavenTestCounts | undefine
 function formatTestCounts(counts: MavenTestCounts | undefined): string | undefined {
   if (!counts) return undefined;
   return `${counts.tests} tests, ${counts.failures} failures, ${counts.errors} errors, ${counts.skipped} skipped`;
+}
+
+/** 判断命令参数是否包含可能执行测试的 Maven 阶段 */
+function hasTestPhase(args: readonly string[]): boolean {
+  const lifecyclePhases = new Set(["test", "verify", "package", "install", "deploy", "integration-test"]);
+  const testGoals = new Set(["test", "integration-test", "verify"]);
+  return args.some((argument) => {
+    if (lifecyclePhases.has(argument)) return true;
+    const goal = argument.split(":").at(-1);
+    return argument.includes(":") && goal !== undefined && testGoals.has(goal);
+  });
+}
+
+/** 构造参数语义提示 */
+function formatArgumentNotices(notices: readonly string[]): string {
+  if (notices.length === 0) return "";
+  return ["Maven notices:", ...notices.map((notice) => `- ${notice}`)].join("\n");
 }
 
 /** 对可能包含凭据的 Maven 参数做最小脱敏 */
@@ -190,11 +209,58 @@ export function summarizeMavenOutput(
   const reportPaths = result.reportPaths ?? [];
   const totalTime = extractTotalTime(lines) ?? `${(result.durationMs / 1000).toFixed(1)} s`;
   const testCounts = extractTestCounts(lines);
-  const testFailuresIgnored = Boolean(testCounts && (testCounts.failures > 0 || testCounts.errors > 0));
+  const argumentAnalysis = analyzeMavenArguments(result.args);
+  const testFailuresDetected = Boolean(testCounts && (testCounts.failures > 0 || testCounts.errors > 0));
+  const noTestsDetected = /No tests (?:to run|were executed|to execute)|No tests were found/i.test(normalized);
+  const flakyTestsDetected =
+    Boolean(
+      (argumentAnalysis.rerunFailingTestsCount && argumentAnalysis.rerunFailingTestsCount > 0) ||
+        argumentAnalysis.failOnFlakeCount !== undefined,
+    ) && /(?:flak|rerun|re-run)/i.test(normalized);
+  const incompleteTestsDetected =
+    Boolean(argumentAnalysis.skipAfterFailureCount && argumentAnalysis.skipAfterFailureCount > 0) &&
+    /(?:skip(?:ping)? further tests|skipAfterFailureCount)/i.test(normalized);
+  const testPhaseRequested = hasTestPhase(result.args);
+  const buildFailureDetected =
+    /BUILD FAILURE|There are test failures|Failed to execute goal|Reactor Summary:.*FAILURE/i.test(normalized);
+  const noSpecifiedTestsFailure =
+    Boolean(argumentAnalysis.selectedTests || argumentAnalysis.selectedIntegrationTests) &&
+    argumentAnalysis.failIfNoSpecifiedTests === true &&
+    testCounts?.tests === 0;
   const warningCount = lines.filter((line) => /^\s*\[(?:WARNING|WARN)\]/i.test(line)).length;
-  const failed = result.status !== "completed" || result.exitCode !== 0 || testFailuresIgnored;
+  const failureIgnoredByMaven =
+    result.exitCode === 0 && (argumentAnalysis.failNever || argumentAnalysis.testFailureIgnore) && buildFailureDetected;
+  const failed =
+    result.status !== "completed" ||
+    result.exitCode !== 0 ||
+    testFailuresDetected ||
+    failureIgnoredByMaven ||
+    noSpecifiedTestsFailure;
+  let status: MavenResultStatus;
+  if (failed) {
+    status = "failed";
+  } else if (
+    testPhaseRequested &&
+    !testFailuresDetected &&
+    !noSpecifiedTestsFailure &&
+    !failureIgnoredByMaven &&
+    (argumentAnalysis.skipAllTests || argumentAnalysis.skipTests || argumentAnalysis.skipIntegrationTests) &&
+    (testCounts === undefined || testCounts.tests === 0)
+  ) {
+    status = "not-run";
+  } else if (testPhaseRequested && (noTestsDetected || (testCounts?.tests === 0 && argumentAnalysis.selectedTests))) {
+    status = "not-run";
+  } else if (incompleteTestsDetected) {
+    status = "incomplete";
+  } else if (flakyTestsDetected && !testFailuresDetected) {
+    status = "passed-with-flakes";
+  } else if (testPhaseRequested && !testCounts && !noTestsDetected) {
+    status = "unknown";
+  } else {
+    status = "passed";
+  }
   const details: MavenToolDetails = {
-    status: failed ? "failed" : "passed",
+    status,
     exitCode: result.exitCode,
     signal: result.signal,
     durationMs: result.durationMs,
@@ -205,17 +271,26 @@ export function summarizeMavenOutput(
     findings,
     reportPaths,
     warningCount,
+    argumentAnalysis,
+    ...(testCounts ? { testCounts } : {}),
     ...(result.errorMessage ? { parserWarning: result.errorMessage } : {}),
   };
 
-  if (!failed) {
+  if (status === "passed" || status === "passed-with-flakes") {
     const suffix = [formatTestCounts(testCounts), warningCount > 0 ? `${warningCount} warnings` : undefined]
       .filter(Boolean)
       .join(", ");
+    const statusLabel = status === "passed-with-flakes" ? "PASS_WITH_FLAKES" : "PASS";
     return {
-      status: "passed",
+      status,
       text: limitBytes(
-        [`PASS${suffix ? ` · ${suffix}` : ""} · ${totalTime}`, "", formatExecutionMetadata(result)].join("\n"),
+        [
+          `${statusLabel}${suffix ? ` · ${suffix}` : ""} · ${totalTime}`,
+          formatArgumentNotices(argumentAnalysis.notices),
+          formatExecutionMetadata(result),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         MAX_SUMMARY_BYTES,
       ),
       details,
@@ -229,13 +304,31 @@ export function summarizeMavenOutput(
           (finding) => `- ${finding.kind.charAt(0).toUpperCase()}${finding.kind.slice(1)}: ${finding.message}`,
         ),
       ].join("\n")
-    : fallbackText(lines);
+    : status === "unknown" || status === "failed"
+      ? fallbackText(lines)
+      : status === "not-run"
+        ? "No tests were executed."
+        : "No structured failure details were detected.";
   const reportsText = reportPaths.length ? `\n\nReports:\n${reportPaths.map((path) => `- ${path}`).join("\n")}` : "";
   const statusText =
-    testFailuresIgnored && result.exitCode === 0
-      ? `FAIL · tests reported ${testFailuresIgnored ? `${testCounts?.failures ?? 0} failures and ${testCounts?.errors ?? 0} errors` : "failures"} (Maven exit code 0)`
-      : `FAIL · ${result.exitCode === null ? result.status : `exit code ${result.exitCode}`}`;
-  const text = [statusText, "", findingText, reportsText, "", formatExecutionMetadata(result)].join("\n");
+    (testFailuresDetected || failureIgnoredByMaven || noSpecifiedTestsFailure) && result.exitCode === 0
+      ? `FAIL · tests reported ${testCounts?.failures ?? 0} failures and ${testCounts?.errors ?? 0} errors (Maven exit code 0)`
+      : status === "not-run"
+        ? "NOT_RUN · no tests were executed"
+        : status === "incomplete"
+          ? "INCOMPLETE · test execution did not finish"
+          : status === "unknown"
+            ? "UNKNOWN · Maven completed without sufficient test evidence"
+            : `FAIL · ${result.exitCode === null ? result.status : `exit code ${result.exitCode}`}`;
+  const text = [
+    statusText,
+    formatArgumentNotices(argumentAnalysis.notices),
+    findingText,
+    reportsText,
+    formatExecutionMetadata(result),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
-  return { status: "failed", text: limitBytes(text, MAX_SUMMARY_BYTES), details };
+  return { status, text: limitBytes(text, MAX_SUMMARY_BYTES), details };
 }

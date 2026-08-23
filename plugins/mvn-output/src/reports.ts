@@ -1,14 +1,27 @@
 /** Maven 测试报告目录发现策略 */
 
 import { readdir } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 
 const REPORT_DIRECTORY_NAMES = new Set(["surefire-reports", "failsafe-reports"]);
 const MAX_SCAN_DEPTH = 8;
 
 /** 发现 Maven 测试报告目录但不读取报告内容 */
-export async function discoverMavenReportPaths(cwd: string): Promise<string[]> {
+export async function discoverMavenReportPaths(
+  cwd: string,
+  configuredDirectories: readonly string[] = [],
+): Promise<string[]> {
   const paths: string[] = [];
+
+  for (const configuredDirectory of configuredDirectories) {
+    const directory = isAbsolute(configuredDirectory) ? configuredDirectory : join(cwd, configuredDirectory);
+    try {
+      const entries = await readdir(directory);
+      if (entries.length >= 0) paths.push(relative(cwd, directory));
+    } catch {
+      // 自定义目录不存在时继续扫描默认目录
+    }
+  }
 
   async function visit(directory: string, depth: number): Promise<void> {
     if (depth > MAX_SCAN_DEPTH) return;
@@ -33,5 +46,5 @@ export async function discoverMavenReportPaths(cwd: string): Promise<string[]> {
   }
 
   await visit(cwd, 0);
-  return paths.sort();
+  return [...new Set(paths)].sort();
 }
