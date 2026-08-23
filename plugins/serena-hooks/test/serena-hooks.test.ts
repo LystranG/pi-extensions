@@ -5,6 +5,7 @@ import {
   type SerenaHookExecutor,
   SerenaHooksController,
   type SerenaHookWarning,
+  shouldRunSerenaRemind,
 } from "../src/index.ts";
 
 function setup(execute: SerenaHookExecutor = async () => ({ code: 0 })) {
@@ -31,7 +32,12 @@ describe("SerenaHooksController", () => {
     const state = setup();
     await state.controller.beforeTool("read", { file_path: "src/index.ts" }, "session", state.warn);
     await state.controller.beforeTool("bash", { command: "pwd" }, "session", state.warn);
-    expect(state.calls).toEqual(["remind", "remind"]);
+    expect(state.calls).toEqual(["remind"]);
+  });
+
+  test("reminds before native and FFF search tools", async () => {
+    expect(["bash", "grep", "ffgrep", "multi_grep", "fff-multi-grep"].every(shouldRunSerenaRemind)).toBe(true);
+    expect(["read", "find", "fffind", "edit", "write"].some(shouldRunSerenaRemind)).toBe(false);
   });
 
   test("cleans up only when Pi quits", async () => {
