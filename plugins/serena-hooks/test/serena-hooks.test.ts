@@ -93,6 +93,6 @@ describe("SerenaHooksController", () => {
   test("reports killed commands without throwing", async () => {
     const state = setup(async () => ({ code: null, killed: true }));
     await state.controller.beforeTool("bash", { command: "pwd" }, "session", state.warn);
-    expect(state.warnings[0]?.detail).toBe("命令超时或被终止");
+    expect(state.warnings[0]?.detail).toBe("Command timed out or was terminated");
   });
 });

@@ -35,20 +35,20 @@ function validatePlugin(directory: string, manifest: PackageManifest): string[] 
   const location = relative(root, directory);
 
   if (!manifest.name?.startsWith("@lystran/pi-")) {
-    errors.push(`${location}: 插件包名必须使用 @lystran/pi- 前缀`);
+    errors.push(`${location}: package name must use the @lystran/pi- prefix`);
   }
-  if (manifest.private) errors.push(`${location}: 插件包必须可发布`);
-  if (manifest.engines?.node !== ">=20") errors.push(`${location}: engines.node 必须为 >=20`);
+  if (manifest.private) errors.push(`${location}: package must be publishable`);
+  if (manifest.engines?.node !== ">=20") errors.push(`${location}: engines.node must be >=20`);
   if (!manifest.pi?.extensions?.includes("./src/index.ts")) {
-    errors.push(`${location}: pi.extensions 必须包含 ./src/index.ts`);
+    errors.push(`${location}: pi.extensions must include ./src/index.ts`);
   }
-  if (!manifest.files?.includes("src")) errors.push(`${location}: files 必须包含 src`);
-  if (!existsSync(join(directory, "src", "index.ts"))) errors.push(`${location}: 缺少 src/index.ts`);
+  if (!manifest.files?.includes("src")) errors.push(`${location}: files must include src`);
+  if (!existsSync(join(directory, "src", "index.ts"))) errors.push(`${location}: src/index.ts is missing`);
 
   const piPackages = ["@earendil-works/pi-coding-agent", "@mariozechner/pi-coding-agent"];
   for (const packageName of piPackages) {
     if (manifest.dependencies?.[packageName]) {
-      errors.push(`${location}: ${packageName} 应声明为 peerDependency 和 devDependency`);
+      errors.push(`${location}: ${packageName} must be declared as both a peerDependency and devDependency`);
     }
   }
 
@@ -62,7 +62,7 @@ function pack(directory: string): string[] {
   });
 
   if (result.status === 0) return [];
-  return [`${relative(root, directory)}: npm pack --dry-run 失败\n${result.stderr.trim()}`];
+  return [`${relative(root, directory)}: npm pack --dry-run failed\n${result.stderr.trim()}`];
 }
 
 const directories = workspaceDirectories();
@@ -76,5 +76,5 @@ if (errors.length > 0) {
   console.error(errors.join("\n"));
   process.exitCode = 1;
 } else {
-  console.log(`已校验 ${directories.length} 个 workspace package`);
+  console.log(`Validated ${directories.length} workspace packages`);
 }

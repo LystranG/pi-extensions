@@ -5,15 +5,15 @@ import type { SerenaHookAction, SerenaHookExecutor, SerenaHookResult, SerenaHook
 
 function errorDetail(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message.replaceAll(/\s+/g, " ").trim().slice(0, 200) || "未知错误";
+  return message.replaceAll(/\s+/g, " ").trim().slice(0, 200) || "Unknown error";
 }
 
 function resultFailure(result: SerenaHookResult): string | undefined {
   if (result.code === 0 && !result.killed) return undefined;
   const stderr = result.stderr?.replaceAll(/\s+/g, " ").trim();
   if (stderr) return stderr.slice(0, 200);
-  if (result.killed) return "命令超时或被终止";
-  return `命令退出码为 ${result.code ?? "unknown"}`;
+  if (result.killed) return "Command timed out or was terminated";
+  return `Command exited with code ${result.code ?? "unknown"}`;
 }
 
 export class SerenaHooksController {

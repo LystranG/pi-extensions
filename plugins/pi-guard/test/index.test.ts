@@ -20,18 +20,18 @@ describe("destructive command guard policy", () => {
       config,
       async () => ({
         deny: true,
-        reason: "历史会被重写",
+        reason: "History will be rewritten",
       }),
       { hasUI: true, ui },
     );
-    expect(result).toEqual({ deny: true, reason: "历史会被重写" });
+    expect(result).toEqual({ deny: true, reason: "History will be rewritten" });
   });
 
   test("asks before dangerous commands in confirm mode", async () => {
     const result = await decideToolCall(
       "rm -rf ./build",
       { ...config, rules: [{ command: "rm -rf *", mode: "confirm" }] },
-      async () => ({ deny: true, reason: "递归删除" }),
+      async () => ({ deny: true, reason: "Recursive deletion" }),
       { hasUI: true, ui },
     );
     expect(result).toEqual({ deny: false, reason: "" });
@@ -41,15 +41,15 @@ describe("destructive command guard policy", () => {
     const result = await decideToolCall(
       "rm -rf ./build",
       { ...config, rules: [{ command: "rm -rf *", mode: "confirm" }] },
-      async () => ({ deny: true, reason: "递归删除" }),
+      async () => ({ deny: true, reason: "Recursive deletion" }),
       { hasUI: true, ui: { confirm: async () => false, notify: (): void => {} } },
     );
     expect(result.deny).toBe(true);
-    expect(result.reason).toBe("用户未确认危险命令");
+    expect(result.reason).toBe("User did not confirm the dangerous command");
   });
 
   test("uses the configured headless policy", async () => {
-    const checker = async () => ({ deny: true, reason: "危险" });
+    const checker = async () => ({ deny: true, reason: "Dangerous" });
     const denied = await decideToolCall(
       "danger",
       { ...config, rules: [{ command: "danger", mode: "confirm" }] },
@@ -87,7 +87,7 @@ describe("configuration", () => {
         ...config,
         rules: [{ command: "git reset --hard *", mode: "confirm" }],
       },
-      async () => ({ deny: true, reason: "历史会被重写" }),
+      async () => ({ deny: true, reason: "History will be rewritten" }),
       { hasUI: true, ui },
     );
     expect(result.deny).toBe(false);

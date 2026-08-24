@@ -11,12 +11,12 @@ function parseReason(stdout: string): string {
       const ruleId = typeof record.rule_id === "string" ? record.rule_id : undefined;
       if (reason && ruleId) return `${reason} [${ruleId}]`;
       if (reason) return reason;
-      if (ruleId) return `dcg 拒绝了此命令 [${ruleId}]`;
+      if (ruleId) return `dcg denied this command [${ruleId}]`;
     }
   } catch {
     // dcg 的拒绝结果损坏时使用固定原因
   }
-  return "dcg 判定此命令具有破坏性";
+  return "dcg classified this command as destructive";
 }
 
 /** 通过 dcg robot API 判定一个命令 */
@@ -34,16 +34,20 @@ export function createDcgChecker(options: Pick<GuardConfig, "binary" | "timeoutM
       };
       const timer = setTimeout(() => {
         child.kill();
-        finish({ deny: true, reason: "dcg 判定超时，已阻止命令执行" });
+        finish({ deny: true, reason: "dcg timed out; command execution was blocked" });
       }, options.timeoutMs);
       child.stdout.on("data", (chunk: Buffer) => {
         if (stdout.length < 16_384) stdout += chunk.toString();
       });
-      child.on("error", () => finish({ deny: true, reason: "无法运行 dcg，已阻止命令执行" }));
+      child.on("error", () => finish({ deny: true, reason: "Unable to run dcg; command execution was blocked" }));
       child.on("close", (code) => {
         if (code === 0) finish({ deny: false, reason: "" });
         else if (code === 1) finish({ deny: true, reason: parseReason(stdout) });
-        else finish({ deny: true, reason: `dcg 返回错误（退出码 ${code ?? "未知"}），已阻止命令执行` });
+        else
+          finish({
+            deny: true,
+            reason: `dcg returned an error (exit code ${code ?? "unknown"}); command execution was blocked`,
+          });
       });
     });
 }

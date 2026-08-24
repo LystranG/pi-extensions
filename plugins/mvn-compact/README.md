@@ -1,12 +1,12 @@
 # @lystran/pi-mvn-compact
 
-给 Pi coding agent 提供 Maven 工具，压缩 Maven 的高噪声命令输出
+Maven tool for Pi coding agents that compresses noisy Maven command output
 
-## 使用边界
+## Scope
 
-这个工具只适用于 Maven 项目。它优先执行当前工作目录的 `./mvnw`，不存在时执行 PATH 中的 `mvn`
+This tool is only for Maven projects. It runs `./mvnw` from the current working directory when available, and falls back to `mvn` on `PATH`
 
-AI 调用工具时只传 Maven 参数数组：
+When calling the tool, pass only the Maven argument array:
 
 ```json
 {
@@ -14,19 +14,19 @@ AI 调用工具时只传 Maven 参数数组：
 }
 ```
 
-不要在 `args` 中传入 `mvn`、`./mvnw`、管道、重定向或其他 shell 语法
+Do not pass `mvn`, `./mvnw`, pipes, redirects, or other shell syntax in `args`
 
-默认使用 compact 模式：成功时返回短摘要，失败时返回分类诊断、测试报告目录和完整日志路径。完整日志保存到项目下的 `.agent-logs/maven/`，失败日志保留，成功日志默认保留在当前运行期间但不会返回全部内容
+The default mode is `compact`: successful runs return a short summary, while failures return categorized diagnostics, test report directories, and the full log path. Full logs are stored under `.agent-logs/maven/`; failure logs are retained, while successful logs are normally retained only for the current run and are not returned in full
 
-`mode: "full"` 用于需要查看 Maven 原始输出的调试场景
+Use `mode: "full"` when debugging requires the raw Maven output
 
-工具还会识别影响结果可信度的常见参数：
+The tool also recognizes common arguments that affect result confidence:
 
-- `-DskipTests`、`-Dmaven.test.skip`、`-DskipITs` 会返回 `NOT_RUN`
-- `-DtestFailureIgnore`、`-Dmaven.test.failure.ignore`、`-fn` 不会让被忽略的测试/构建失败伪装成 `PASS`
-- `-Dtest`、`-Dit.test` 和 `failIfNoSpecifiedTests` 会标记空测试选择
-- `-q`、`-l`、自定义日志配置导致测试证据缺失时会返回 `UNKNOWN`
-- 重试成功的测试会返回 `PASS_WITH_FLAKES`
-- `-pl`、`-am`、`-amd`、`-N`、`-rf`、`-T` 和 Reactor 失败策略会在摘要中显示构建范围提示
+- `-DskipTests`, `-Dmaven.test.skip`, and `-DskipITs` return `NOT_RUN`
+- `-DtestFailureIgnore`, `-Dmaven.test.failure.ignore`, and `-fn` do not let ignored test/build failures appear as `PASS`
+- `-Dtest`, `-Dit.test`, and `failIfNoSpecifiedTests` flag empty test selections
+- `-q`, `-l`, or custom logging configuration returns `UNKNOWN` when test evidence is missing
+- Tests that pass after retries return `PASS_WITH_FLAKES`
+- `-pl`, `-am`, `-amd`, `-N`, `-rf`, `-T`, and Reactor failure strategies add build-scope notes to the summary
 
-结果状态包括 `PASS`、`FAIL`、`NOT_RUN`、`PASS_WITH_FLAKES`、`INCOMPLETE` 和 `UNKNOWN`。`Maven exit code: 0` 只代表 Maven 进程返回成功，不代表测试一定完整通过
+Result statuses are `PASS`, `FAIL`, `NOT_RUN`, `PASS_WITH_FLAKES`, `INCOMPLETE`, and `UNKNOWN`. `Maven exit code: 0` only means that the Maven process exited successfully; it does not prove that all tests passed

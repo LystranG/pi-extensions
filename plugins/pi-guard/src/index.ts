@@ -21,8 +21,8 @@ export default function piGuardExtension(pi: ExtensionAPI): void {
   } catch (error) {
     pi.on("tool_call", async (event, ctx) => {
       if (!isToolCallEventType("bash", event)) return undefined;
-      ctx.ui.notify(`Pi Guard 配置错误：${error instanceof Error ? error.message : String(error)}`, "error");
-      return { block: true, reason: "Pi Guard 配置无效，已阻止命令执行" };
+      ctx.ui.notify(`Pi Guard configuration error: ${error instanceof Error ? error.message : String(error)}`, "error");
+      return { block: true, reason: "Pi Guard configuration is invalid; command execution was blocked" };
     });
     return;
   }
@@ -36,7 +36,7 @@ export default function piGuardExtension(pi: ExtensionAPI): void {
         : await confirmStdinInput(request.input, config, ctx);
     if (decision.deny) {
       ctx.ui.notify(
-        `已阻止 ${request.kind === "stdin" ? "PTY 输入" : "命令"}：${summarizeCommand(
+        `Blocked ${request.kind === "stdin" ? "PTY input" : "command"}: ${summarizeCommand(
           request.kind === "stdin" ? request.input : request.command,
         )}\n${decision.reason}`,
         "warning",

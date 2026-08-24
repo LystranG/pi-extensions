@@ -16,21 +16,23 @@ export async function decideCommand(
 ): Promise<GuardDecision> {
   const rule = findMatchingRule(command, config.rules);
   if (rule?.mode === "deny") {
-    return { deny: true, reason: "命中 Pi Guard 拒绝规则", rule };
+    return { deny: true, reason: "Matched a Pi Guard denial rule", rule };
   }
   const decision = await checker(command);
   if (!rule) return decision;
   if (!ctx.hasUI) {
     return config.headless === "allow"
       ? { deny: false, reason: "" }
-      : { deny: true, reason: `${decision.reason}（当前无可用确认界面）`, rule };
+      : { deny: true, reason: `${decision.reason} (no confirmation UI is available)`, rule };
   }
-  const ruleText = `\n匹配规则：${rule.command}（${rule.match ?? "exact"}）`;
+  const ruleText = `\nMatching rule: ${rule.command} (${rule.match ?? "exact"})`;
   const confirmed = await ctx.ui.confirm(
-    "确认危险命令",
+    "Confirm dangerous command",
     `${summarizeCommand(command)}\n\n${decision.reason}${ruleText}`,
   );
-  return confirmed ? { deny: false, reason: "" } : { deny: true, reason: "用户未确认危险命令", rule };
+  return confirmed
+    ? { deny: false, reason: "" }
+    : { deny: true, reason: "User did not confirm the dangerous command", rule };
 }
 
 /** write_stdin 的非空输入必须单独确认，不能假设是完整 shell 命令 */
@@ -39,8 +41,8 @@ export async function confirmStdinInput(input: string, config: GuardConfig, ctx:
   if (!ctx.hasUI) {
     return config.headless === "allow"
       ? { deny: false, reason: "" }
-      : { deny: true, reason: "write_stdin 非空输入在无确认界面时已阻止" };
+      : { deny: true, reason: "Non-empty write_stdin input was blocked because no confirmation UI is available" };
   }
-  const confirmed = await ctx.ui.confirm("确认 PTY 输入", summarizeCommand(input));
-  return confirmed ? { deny: false, reason: "" } : { deny: true, reason: "用户未确认 PTY 输入" };
+  const confirmed = await ctx.ui.confirm("Confirm PTY input", summarizeCommand(input));
+  return confirmed ? { deny: false, reason: "" } : { deny: true, reason: "User did not confirm the PTY input" };
 }

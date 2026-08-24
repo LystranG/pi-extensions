@@ -1,26 +1,26 @@
 # @lystran/pi-guard
 
-通过 [destructive_command_guard](https://github.com/Dicklesworthstone/destructive_command_guard) 的 `dcg --robot test` 接口，在 Pi 执行 `bash` 工具前检查危险命令，并允许为具体命令配置询问或拒绝
+Checks commands with [destructive_command_guard](https://github.com/Dicklesworthstone/destructive_command_guard)'s `dcg --robot test` interface before Pi executes the `bash` tool, with configurable confirmation or denial rules for specific commands
 
-## 安装
+## Installation
 
-先按照 dcg 官方文档安装并确认 `dcg --version` 可用，然后在插件目录执行：
+Install dcg according to its official documentation and verify that `dcg --version` works, then run this from the plugin directory:
 
 ```bash
 pi install -l .
 ```
 
-也可以把发布后的包加入 Pi 的扩展配置
+You can also add the published package to Pi's extension configuration
 
-## 配置
+## Configuration
 
-插件默认拒绝 dcg 判定为危险的命令。规则文件按以下顺序查找：
+The plugin denies commands that dcg considers dangerous by default. Rule files are searched in this order:
 
-- 项目配置：`.pi/guard.json`
-- 用户配置：`~/.pi/agent/guard.json`
-- `PI_GUARD_CONFIG`：显式指定配置路径
+- Project configuration: `.pi/guard.json`
+- User configuration: `~/.pi/agent/guard.json`
+- `PI_GUARD_CONFIG`: Explicit configuration path
 
-配置示例：
+Example configuration:
 
 ```json
 {
@@ -34,14 +34,14 @@ pi install -l .
 }
 ```
 
-规则只覆盖 dcg 已判定为危险的命令；普通安全命令仍由 dcg 判定后正常执行。规则按文件顺序匹配，命中第一条规则。命令中包含 `*` 时，`*` 匹配任意长度的命令文本
+Rules only override commands that dcg has already classified as dangerous; dcg continues to evaluate and execute ordinary safe commands. Rules are matched in file order, and the first match wins. In a command containing `*`, `*` matches any number of characters
 
-也可以显式使用 `match: "exact"`、`"prefix"`、`"wildcard"` 或 `"regex"`。不写 `match` 时，不含 `*` 的命令按完整匹配，包含 `*` 的命令按通配符匹配
+You can also explicitly use `match: "exact"`, `"prefix"`, `"wildcard"`, or `"regex"`. When `match` is omitted, commands without `*` use exact matching and commands containing `*` use wildcard matching
 
-可选环境变量：`DCG_BIN`、`DCG_PI_MODE`、`DCG_PI_HEADLESS`、`DCG_PI_TIMEOUT_MS`
+Optional environment variables: `DCG_BIN`, `DCG_PI_MODE`, `DCG_PI_HEADLESS`, `DCG_PI_TIMEOUT_MS`
 
-dcg 缺失、超时、输出损坏或返回未识别退出码时均拒绝命令。直接拒绝、配置错误和用户取消确认时，Pi 界面会显示通知；询问对话框会显示命令、dcg 原因和命中的配置规则
+Commands are denied when dcg is missing, times out, returns malformed output, or exits with an unrecognized code. Pi displays a notification for direct denials, configuration errors, and canceled confirmations; confirmation dialogs show the command, dcg reason, and matching configuration rule
 
-## 边界
+## Boundaries
 
-这是 Pi `bash` 工具调用的执行前保护，不是操作系统沙箱。它不覆盖其他自定义工具、用户直接启动的 shell 或通过脚本绕过工具调用的行为；需要更强边界时，应在容器或操作系统沙箱中运行 Pi
+This is pre-execution protection for Pi `bash` tool calls, not an operating-system sandbox. It does not cover other custom tools, shells started directly by the user, or scripts that bypass tool calls; use Pi inside a container or OS sandbox when stronger isolation is required

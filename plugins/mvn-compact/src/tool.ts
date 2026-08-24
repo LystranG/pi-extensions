@@ -10,13 +10,13 @@ import type { MavenToolDetails, MavenToolParams } from "./types.ts";
 
 const MavenToolParamsSchema = Type.Object({
   args: Type.Array(Type.String(), {
-    description: 'Maven 参数数组，例如 ["clean", "test"]，不要包含 mvn 或 shell 语法',
+    description: 'Maven argument array, for example ["clean", "test"]; do not include mvn or shell syntax',
     minItems: 1,
   }),
   mode: Type.Optional(
     Type.Union([Type.Literal("compact"), Type.Literal("full")], {
       default: "compact",
-      description: "compact 返回摘要，full 返回 Maven 原始输出",
+      description: "compact returns a summary; full returns raw Maven output",
     }),
   ),
   timeoutMs: Type.Optional(
@@ -24,7 +24,7 @@ const MavenToolParamsSchema = Type.Object({
       minimum: 1_000,
       maximum: 1_800_000,
       default: DEFAULT_TIMEOUT_MS,
-      description: "超时时间，单位毫秒",
+      description: "Timeout in milliseconds",
     }),
   ),
 });
@@ -35,12 +35,12 @@ export function registerMavenTool(pi: Pick<ExtensionAPI, "registerTool">): void 
     name: "mvn",
     label: "Maven",
     description:
-      "仅用于包含 pom.xml 的 Maven 项目。执行当前项目的 ./mvnw，若不存在则执行 PATH 中的 mvn。传入 Maven 参数数组，不要调用 shell 语法。默认压缩输出并保留完整日志路径；需要原始输出时使用 mode=full。",
+      "Use only for Maven projects containing pom.xml. Run ./mvnw from the current project when available, otherwise use mvn from PATH. Pass a Maven argument array and do not use shell syntax. Output is compact by default and includes the full log path; use mode=full when raw output is needed.",
     promptSnippet: "Run Maven with compact, diagnostic output",
     promptGuidelines: [
-      "仅当当前目录包含 pom.xml 时调用此工具",
-      "不要把 mvn、./mvnw、管道、重定向或 shell 运算符放进 args",
-      "默认使用 compact；失败时先依据摘要和 logPath 诊断",
+      "Call this tool only when the current directory contains pom.xml",
+      "Do not put mvn, ./mvnw, pipes, redirects, or shell operators in args",
+      "Use compact by default; diagnose failures from the summary and logPath first",
     ],
     parameters: MavenToolParamsSchema,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

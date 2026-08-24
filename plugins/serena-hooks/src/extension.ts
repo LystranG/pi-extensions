@@ -10,7 +10,7 @@ const COMMAND = "serena-hooks";
 
 function warningFor(ctx: ExtensionContext) {
   return (action: Parameters<SerenaHookWarning>[0], detail: string) => {
-    if (ctx.hasUI) ctx.ui.notify(`${COMMAND} ${action} 失败：${detail}`, "warning");
+    if (ctx.hasUI) ctx.ui.notify(`${COMMAND} ${action} failed: ${detail}`, "warning");
   };
 }
 

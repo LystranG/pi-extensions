@@ -1,34 +1,34 @@
 # @lystran/pi-serena-hooks
 
-把 Serena 的生命周期命令接入 Pi coding agent。插件会为 Serena hook 注入 JSON stdin，并显式使用 `claude-code` client 兼容 Pi 的原生工具事件。
+Connects Serena lifecycle commands to a Pi coding agent. The plugin injects JSON stdin into Serena hooks and explicitly uses the `claude-code` client to match Pi's native tool events.
 
-## 要求
+## Requirements
 
 - Pi coding agent `>=0.84.2`
 - Node.js `>=20`
-- `serena-hooks` 可执行文件已加入 `PATH`
+- The `serena-hooks` executable is available on `PATH`
 
-## 安装
+## Installation
 
 ```bash
 pi install npm:@lystran/pi-serena-hooks
 ```
 
-本地开发：
+For local development:
 
 ```bash
 cd plugins/serena-hooks
 pi install -l .
 ```
 
-## 生命周期映射
+## Lifecycle Mapping
 
-| Pi 事件 | 执行命令 |
+| Pi event | Command |
 | --- | --- |
-| 任意 `session_start` | `serena-hooks activate --client claude-code` |
-| 模型调用 `bash` 前 | `serena-hooks remind --client claude-code` |
-| `session_shutdown` 且原因为 `quit` | `serena-hooks cleanup --client claude-code` |
+| Any `session_start` | `serena-hooks activate --client claude-code` |
+| Before a model `bash` call | `serena-hooks remind --client claude-code` |
+| `session_shutdown` with reason `quit` | `serena-hooks cleanup --client claude-code` |
 
-`remind` 监听模型发起的 `bash`、`grep`、`ffgrep`、`multi_grep` 和 `fff-multi-grep` 工具。这样可以兼容 Pi 原生搜索工具，以及 FFF 的 `tools-and-ui`、`tools-only`、`override` 三种模式，同时避免读取 skill、源码或文档时被 Serena 的连续读取提醒误拦截。`find` 和 `fffind` 是路径搜索，不触发 `remind`。每个命令最多等待 10 秒。命令不存在、超时或返回非零时不会阻断 Pi；同一会话内，同一动作只显示一次警告，但后续事件仍会继续尝试执行。
+`remind` watches model-initiated `bash`, `grep`, `ffgrep`, `multi_grep`, and `fff-multi-grep` tools. This supports Pi's native search tools and FFF's `tools-and-ui`, `tools-only`, and `override` modes, while avoiding false blocks from Serena's repeated-read reminder when reading skills, source code, or documentation. `find` and `fffind` search paths and do not trigger `remind`. Each command waits for at most 10 seconds. Missing commands, timeouts, and non-zero exits do not block Pi; each action produces at most one warning per session, while later events continue to attempt the command.
 
-用户通过 `!` 或 `!!` 直接执行的 shell 命令不会触发 `remind`。
+Shell commands executed directly by the user with `!` or `!!` do not trigger `remind`.
