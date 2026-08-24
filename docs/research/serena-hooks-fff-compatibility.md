@@ -2,7 +2,7 @@
 
 ## 结论
 
-`@lystran/pi-serena-hooks` 的 `remind` 应监听 Pi 中代表代码搜索或终端执行的工具：
+`@lystran/pi-serena-hooks` 的 `remind` 应监听 Pi 中代表代码搜索的工具：
 
 ```text
 bash
@@ -12,7 +12,7 @@ multi_grep
 fff-multi-grep
 ```
 
-不监听 `read`、`find` 或 `fffind`。这样可以保留 Serena 对搜索和 Bash 使用方式的提醒，同时避免连续读取 skill、源码和文档时触发 Serena 的读取计数并阻断工具调用。
+Pi 的 FFF 搜索工具和 Bash 搜索命令会在适配层统一映射为 Serena 的 `grep` 工具名。不监听普通 `bash`、`read`、`find` 或 `fffind`。这样可以保留 Serena 对搜索的提醒，同时避免普通 Bash 和连续读取 skill、源码、文档时触发无关的计数。
 
 ## Serena 官方语义
 
@@ -24,7 +24,7 @@ Serena 的 `remind` 是 `PreToolUse` hook，用于在 agent 连续使用代码�
 - Codex 使用 `Bash` matcher，因为 Codex 的主要工具入口是 Bash
 - Grok 显式匹配 `grep|read_file|run_terminal_command`
 
-Pi 同时提供原生 `bash`、`grep`、`read`、`find` 等工具，因此不能直接复制 Codex 的 Bash-only 配置，也不适合直接复制 Claude Code 的全量 matcher。当前插件选择 Pi 语义下的 Bash 和搜索工具，并排除 `read` 以避免 skill 加载被拦截。
+Pi 同时提供原生 `bash`、`grep`、`read`、`find` 等工具，因此不能直接复制 Codex 的 Bash-only 配置，也不适合直接复制 Claude Code 的全量 matcher。当前插件只将原生/FFF 搜索工具，以及 Bash 中以 `grep`、`rg`、`fgrep`、`egrep`、`ag` 或 `ack` 开头的命令映射到 Serena 的 `grep` 语义，并排除普通 Bash 和 `read` 以避免 skill 加载被拦截。
 
 ## FFF 工具与模式
 
@@ -38,7 +38,7 @@ FFF Pi 扩展通过 `/fff-mode` 支持三种模式：
 
 `fff-multi-grep` 和 `multi_grep` 只有在 `PI_FFF_MULTIGREP=1` 时注册。匹配器同时支持这两个名字，因此不需要读取 FFF 当前模式，也能在模式切换和 `/reload` 后保持兼容。
 
-`fffind` 和 `find` 是路径/文件名搜索，不属于 Serena 官方 `grep`/`read_file` 提醒范围，因此不触发 `remind`。
+`fffind` 和 `find` 是路径/文件名搜索，不属于 Serena 官方 `grep`/`read_file` 提醒范围，因此不触发 `remind`。使用 `--client claude-code` 时，适配层必须把 FFF 工具名归一化为 `grep`，否则 Serena 不会把它们识别为 grep。
 
 ## 实现边界
 

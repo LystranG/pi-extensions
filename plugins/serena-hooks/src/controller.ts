@@ -1,6 +1,6 @@
 // 编排 Serena hook 的生命周期、失败处理和工具过滤
 
-import { shouldRunSerenaRemind } from "./tool-matcher.ts";
+import { normalizeSerenaRemindToolCall } from "./tool-matcher.ts";
 import type { SerenaHookAction, SerenaHookExecutor, SerenaHookResult, SerenaHookWarning } from "./types.ts";
 
 function errorDetail(error: unknown): string {
@@ -35,8 +35,13 @@ export class SerenaHooksController {
     sessionId: string,
     warn: SerenaHookWarning,
   ): Promise<SerenaHookResult | undefined> {
-    if (!shouldRunSerenaRemind(toolName)) return undefined;
-    return this.#run("remind", { session_id: sessionId, tool_name: toolName, tool_input: toolInput }, warn);
+    const normalizedTool = normalizeSerenaRemindToolCall(toolName, toolInput);
+    if (!normalizedTool) return undefined;
+    return this.#run(
+      "remind",
+      { session_id: sessionId, tool_name: normalizedTool.toolName, tool_input: normalizedTool.toolInput },
+      warn,
+    );
   }
 
   async sessionShutdown(

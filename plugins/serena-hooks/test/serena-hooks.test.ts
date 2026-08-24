@@ -28,16 +28,48 @@ describe("SerenaHooksController", () => {
     expect(state.calls).toEqual(["activate", "activate", "activate", "activate", "activate"]);
   });
 
-  test("reminds only before the model bash tool", async () => {
+  test("ignores ordinary model bash calls", async () => {
     const state = setup();
     await state.controller.beforeTool("read", { file_path: "src/index.ts" }, "session", state.warn);
     await state.controller.beforeTool("bash", { command: "pwd" }, "session", state.warn);
-    expect(state.calls).toEqual(["remind"]);
+    expect(state.calls).toEqual([]);
   });
 
   test("reminds before native and FFF search tools", async () => {
-    expect(["bash", "grep", "ffgrep", "multi_grep", "fff-multi-grep"].every(shouldRunSerenaRemind)).toBe(true);
-    expect(["read", "find", "fffind", "edit", "write"].some(shouldRunSerenaRemind)).toBe(false);
+    const state = setup();
+    for (const toolName of ["grep", "ffgrep", "multi_grep", "fff-multi-grep"]) {
+      await state.controller.beforeTool(toolName, { pattern: "foo" }, "session", state.warn);
+    }
+    await state.controller.beforeTool("bash", { command: "rg foo ." }, "session", state.warn);
+
+    expect(state.calls).toEqual(["remind", "remind", "remind", "remind", "remind"]);
+  });
+
+  test("normalizes FFF and shell search tools to Serena grep", async () => {
+    const inputs: Array<Record<string, unknown>> = [];
+    const state = setup(async (_action, input) => {
+      inputs.push(input);
+      return { code: 0 };
+    });
+
+    await state.controller.beforeTool("ffgrep", { pattern: "foo" }, "session", state.warn);
+    await state.controller.beforeTool("bash", { command: "/usr/bin/rg foo ." }, "session", state.warn);
+    await state.controller.beforeTool("bash", { command: "pwd" }, "session", state.warn);
+
+    expect(inputs).toEqual([
+      { session_id: "session", tool_name: "grep", tool_input: { pattern: "foo" } },
+      { session_id: "session", tool_name: "grep", tool_input: { command: "/usr/bin/rg foo ." } },
+    ]);
+  });
+
+  test("does not treat ordinary reads, paths, or shell commands as grep", async () => {
+    expect(shouldRunSerenaRemind("grep")).toBe(true);
+    expect(shouldRunSerenaRemind("ffgrep")).toBe(true);
+    expect(shouldRunSerenaRemind("bash", { command: "grep foo ." })).toBe(true);
+    expect(shouldRunSerenaRemind("bash", { command: "pwd" })).toBe(false);
+    expect(shouldRunSerenaRemind("read", { file_path: "src/index.ts" })).toBe(false);
+    expect(shouldRunSerenaRemind("find", { pattern: "src" })).toBe(false);
+    expect(shouldRunSerenaRemind("fffind", { pattern: "src" })).toBe(false);
   });
 
   test("cleans up only when Pi quits", async () => {
@@ -71,8 +103,8 @@ describe("SerenaHooksController", () => {
   test("warns once per failed action while continuing to retry", async () => {
     const state = setup(async () => ({ code: 1, stderr: "failed\nwith details" }));
     await state.controller.sessionStart("session", state.warn);
-    await state.controller.beforeTool("bash", { command: "pwd" }, "session", state.warn);
-    await state.controller.beforeTool("bash", { command: "pwd" }, "session", state.warn);
+    await state.controller.beforeTool("bash", { command: "rg foo ." }, "session", state.warn);
+    await state.controller.beforeTool("bash", { command: "rg foo ." }, "session", state.warn);
 
     expect(state.calls).toEqual(["activate", "remind", "remind"]);
     expect(state.warnings).toEqual([
@@ -92,7 +124,7 @@ describe("SerenaHooksController", () => {
 
   test("reports killed commands without throwing", async () => {
     const state = setup(async () => ({ code: null, killed: true }));
-    await state.controller.beforeTool("bash", { command: "pwd" }, "session", state.warn);
+    await state.controller.beforeTool("bash", { command: "rg foo ." }, "session", state.warn);
     expect(state.warnings[0]?.detail).toBe("Command timed out or was terminated");
   });
 });

@@ -4,7 +4,7 @@ export { createSerenaHookExecutor, runSerenaCommand } from "./command.ts";
 export { SerenaHooksController } from "./controller.ts";
 export { default } from "./extension.ts";
 export { parseSerenaHookOutput } from "./output.ts";
-export { shouldRunSerenaRemind } from "./tool-matcher.ts";
+export { normalizeSerenaRemindToolCall, shouldRunSerenaRemind } from "./tool-matcher.ts";
 export type {
   SerenaCommandExecutor,
   SerenaHookAction,
