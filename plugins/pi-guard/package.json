@@ -1,6 +1,6 @@
 {
   "name": "@lystran/pi-guard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Protect Pi shell tool calls with configurable command guard rules",
   "repository": {
     "type": "git",

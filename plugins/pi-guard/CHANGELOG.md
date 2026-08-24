@@ -1,5 +1,11 @@
 # @lystran/pi-guard
 
+## 0.2.0
+
+### Minor Changes
+
+- 3103dae: Generate a user configuration on first load and ask for confirmation by default for dcg-classified dangerous commands
+
 ## 0.1.0
 
 ### Minor Changes
