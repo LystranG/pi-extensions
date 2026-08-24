@@ -8,6 +8,7 @@ Connects Serena lifecycle commands to a Pi coding agent. The plugin injects JSON
 - Node.js `>=20`
 - The Serena CLI is installed on the system
 - Both `serena` and `serena-hooks` are available on `PATH`
+- An MCP extension is installed and configured with the Serena MCP server
 
 Verify the CLI installation before starting Pi:
 
@@ -18,7 +19,24 @@ serena-hooks --help
 
 Install Serena using the method documented by the Serena project: https://oraios.github.io/serena/
 
-This plugin does not provide the Serena MCP server or install the Serena CLI. The Serena MCP server must be configured separately in Pi, for example through `pi-mcp-adapter`, when symbolic Serena tools are required.
+This plugin does not provide the Serena MCP server or install the Serena CLI. Configure Serena's MCP server through an MCP extension such as `pi-mcp-adapter`:
+
+```json
+{
+  "mcpServers": {
+    "serena": {
+      "command": "serena",
+      "args": [
+        "start-mcp-server",
+        "--context=ide",
+        "--project-from-cwd"
+      ]
+    }
+  }
+}
+```
+
+The MCP extension and this hooks plugin have separate responsibilities: the MCP extension exposes Serena's symbolic tools to Pi, while this plugin runs Serena's lifecycle and `remind` hooks.
 
 ## Installation
 
@@ -49,7 +67,7 @@ FFF path-search tools, `fffind` and overridden `find`, are intentionally not sen
 
 ### `pi-mcp-adapter`
 
-This is an optional companion plugin for exposing Serena's MCP tools to Pi. It is not intercepted by `remind`; configure the Serena MCP server and its direct tools through `pi-mcp-adapter` separately.
+This is the recommended MCP companion plugin for exposing Serena's symbolic tools to Pi. It is not intercepted by `remind`; configure the Serena MCP server and its direct tools through `pi-mcp-adapter` separately.
 
 ## Serena Hook Format
 
