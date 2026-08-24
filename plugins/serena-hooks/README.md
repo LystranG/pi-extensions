@@ -33,6 +33,24 @@ cd plugins/serena-hooks
 pi install -l .
 ```
 
+## Integrated Plugins
+
+### `@ff-labs/pi-fff`
+
+The plugin supports all three FFF operating modes:
+
+| FFF mode | Search tools handled by Serena |
+| --- | --- |
+| `tools-and-ui` | `ffgrep`, optional `fff-multi-grep` |
+| `tools-only` | `ffgrep`, optional `fff-multi-grep` |
+| `override` | `grep`, optional `multi_grep` |
+
+FFF path-search tools, `fffind` and overridden `find`, are intentionally not sent to `remind`.
+
+### `pi-mcp-adapter`
+
+This is an optional companion plugin for exposing Serena's MCP tools to Pi. It is not intercepted by `remind`; configure the Serena MCP server and its direct tools through `pi-mcp-adapter` separately.
+
 ## Serena Hook Format
 
 The plugin is compatible with the JSON hook protocol exposed by Serena's `--client claude-code` option. It sends `session_id`, `tool_name`, and `tool_input` through stdin, then handles Serena's `hookSpecificOutput` response:
