@@ -39,3 +39,12 @@ from naming a replacement session.
 This repository currently develops against `@earendil-works/pi-coding-agent`
 and `@earendil-works/pi-ai` version `0.84.2`. Older Pi releases may not expose
 `agent_settled`, `session_info_changed`, or immediate session-title refresh.
+
+## Title Length Policy
+
+The plugin validates the normalized model result without truncating it. It
+counts Han characters separately from non-Han letter/number words and requires
+both limits to pass: at most 10 Han characters and at most 5 non-Han words.
+The initial generation is followed by at most 3 retries when the result is
+oversized. Four oversized results total cause the plugin to leave the session
+name unchanged and show an English warning.

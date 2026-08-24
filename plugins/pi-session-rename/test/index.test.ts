@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { createSessionRenameController } from "../src/controller.ts";
-import { buildTitlePrompt, isEligibleInput, normalizeTitle } from "../src/title.ts";
+import {
+  buildRetryTitlePrompt,
+  buildTitlePrompt,
+  countTitleLength,
+  generateTitle,
+  isEligibleInput,
+  isTitleWithinLimit,
+  normalizeTitle,
+  type TitleGenerationResult,
+} from "../src/title.ts";
 
 describe("isEligibleInput", () => {
   test("accepts the first ordinary interactive prompt", () => {
@@ -25,12 +34,43 @@ describe("title helpers", () => {
     const prompt = buildTitlePrompt("Fix login");
     expect(prompt).toContain("<user-prompt>\nFix login\n</user-prompt>");
   });
+
+  test("enforces separate Chinese-character and non-Chinese-word limits", () => {
+    expect(countTitleLength("修复 OAuth 登录流程")).toEqual({ hanCharacters: 6, words: 1 });
+    expect(isTitleWithinLimit("修复 OAuth 登录流程")).toBe(true);
+    expect(isTitleWithinLimit("这是一个超过十个汉字的标题内容")).toBe(false);
+    expect(isTitleWithinLimit("One Two Three Four Five")).toBe(true);
+    expect(isTitleWithinLimit("One Two Three Four Five Six")).toBe(false);
+    expect(buildRetryTitlePrompt("One Two Three Four Five Six")).toContain("exceeded the session title length limit");
+  });
+
+  test("retries an oversized model title at most three times", async () => {
+    const prompts: string[] = [];
+    const oversized = "One Two Three Four Five Six";
+    const result = await generateTitle(
+      {} as never,
+      "Explain login",
+      new AbortController().signal,
+      async (_model, context) => {
+        prompts.push(context.messages[0]?.content as string);
+        return {
+          role: "assistant",
+          content: [{ type: "text", text: oversized }],
+          stopReason: "stop",
+        } as never;
+      },
+    );
+
+    expect(prompts).toHaveLength(4);
+    expect(prompts[1]).toContain("exceeded the session title length limit");
+    expect(result).toEqual({ lengthLimitExceeded: true });
+  });
 });
 
 describe("session rename controller", () => {
   test("starts one background rename after a settled idle turn", async () => {
     let sessionName: string | undefined;
-    let resolveTitle: ((title: string) => void) | undefined;
+    let resolveTitle: ((title: TitleGenerationResult) => void) | undefined;
     const controller = createSessionRenameController({
       getSessionName: () => sessionName,
       setSessionName: (name) => {
@@ -42,12 +82,13 @@ describe("session rename controller", () => {
           expect(signal.aborted).toBe(false);
           resolveTitle = resolve;
         }),
+      warn: () => undefined,
     });
 
     controller.onInput({ text: "Fix login", source: "interactive" });
     controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
     controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    resolveTitle?.("Fix login flow");
+    resolveTitle?.({ title: "Fix login flow", lengthLimitExceeded: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(sessionName).toBe("Fix login flow");
@@ -64,8 +105,9 @@ describe("session rename controller", () => {
       generateTitle: async (_model, _registry, candidate) => {
         calls++;
         expect(candidate.prompt).toBe("First request");
-        return "First request";
+        return { title: "First request", lengthLimitExceeded: false };
       },
+      warn: () => undefined,
     });
 
     controller.onInput({ text: "First request", source: "interactive" });
@@ -89,8 +131,9 @@ describe("session rename controller", () => {
       },
       generateTitle: async () => {
         calls++;
-        return "Retry succeeded";
+        return { title: "Retry succeeded", lengthLimitExceeded: false };
       },
+      warn: () => undefined,
     });
 
     controller.onInput({ text: "Retry request", source: "interactive" });
@@ -109,7 +152,8 @@ describe("session rename controller", () => {
       setSessionName: (name) => {
         sessionName = name;
       },
-      generateTitle: async () => "Later request",
+      generateTitle: async () => ({ title: "Later request", lengthLimitExceeded: false }),
+      warn: () => undefined,
     });
 
     controller.onInput({ text: "Failed request", source: "interactive" });
@@ -129,8 +173,9 @@ describe("session rename controller", () => {
       setSessionName: () => undefined,
       generateTitle: async () => {
         called = true;
-        return "Should not happen";
+        return { title: "Should not happen", lengthLimitExceeded: false };
       },
+      warn: () => undefined,
     });
 
     controller.onInput({ text: "Interrupted request", source: "interactive" });
@@ -150,8 +195,9 @@ describe("session rename controller", () => {
       },
       generateTitle: async () => {
         calls++;
-        return "Later completed turn";
+        return { title: "Later completed turn", lengthLimitExceeded: false };
       },
+      warn: () => undefined,
     });
 
     controller.onInput({ text: "Interrupted request", source: "interactive" });
@@ -175,6 +221,7 @@ describe("session rename controller", () => {
         signal = requestSignal;
         return new Promise(() => undefined);
       },
+      warn: () => undefined,
     });
 
     controller.onInput({ text: "Long request", source: "interactive" });
@@ -186,7 +233,7 @@ describe("session rename controller", () => {
 
   test("does not let an old title request rename a new session", async () => {
     let sessionName: string | undefined;
-    let resolveTitle: ((title: string) => void) | undefined;
+    let resolveTitle: ((title: TitleGenerationResult) => void) | undefined;
     const controller = createSessionRenameController({
       getSessionName: () => sessionName,
       setSessionName: (name) => {
@@ -196,15 +243,34 @@ describe("session rename controller", () => {
         new Promise((resolve) => {
           resolveTitle = resolve;
         }),
+      warn: () => undefined,
     });
 
     controller.onInput({ text: "Old session", source: "interactive" });
     controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
     controller.onSessionShutdown();
     controller.onSessionStart();
-    resolveTitle?.("Old title");
+    resolveTitle?.({ title: "Old title", lengthLimitExceeded: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(sessionName).toBeUndefined();
+  });
+
+  test("warns in English after title length retries are exhausted", async () => {
+    const warnings: string[] = [];
+    const controller = createSessionRenameController({
+      getSessionName: () => undefined,
+      setSessionName: () => undefined,
+      warn: (message) => warnings.push(message),
+      generateTitle: async () => ({ lengthLimitExceeded: true }),
+    });
+
+    controller.onInput({ text: "Long title request", source: "interactive" });
+    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(warnings).toEqual([
+      "Session title generation stopped after 3 retries because the title exceeded the length limit.",
+    ]);
   });
 });

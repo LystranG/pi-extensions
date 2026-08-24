@@ -1,6 +1,6 @@
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext, InputEvent } from "@earendil-works/pi-coding-agent";
-import { isEligibleInput } from "./title.ts";
+import { isEligibleInput, type TitleGenerationResult } from "./title.ts";
 
 export interface RenameCandidate {
   /** 首个普通用户提示 */
@@ -12,13 +12,15 @@ export interface SessionRenameControllerOptions {
   getSessionName: () => string | undefined;
   /** 写入自动生成的 session 名称 */
   setSessionName: (name: string) => void;
+  /** 输出无法满足长度限制的英文警告 */
+  warn: (message: string) => void;
   /** 在独立请求中生成 session 名称 */
   generateTitle: (
     model: Model<Api>,
     modelRegistry: ExtensionContext["modelRegistry"],
     candidate: RenameCandidate,
     signal: AbortSignal,
-  ) => Promise<string | undefined>;
+  ) => Promise<TitleGenerationResult>;
 }
 
 /** 管理首次 turn 候选、失败恢复和后台重命名竞态 */
@@ -61,7 +63,7 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     activeAbortController = abortController;
     void options
       .generateTitle(model, modelRegistry, request, abortController.signal)
-      .then((title) => {
+      .then((result) => {
         if (
           abortController.signal.aborted ||
           requestGeneration !== sessionGeneration ||
@@ -69,7 +71,11 @@ export function createSessionRenameController(options: SessionRenameControllerOp
         ) {
           return;
         }
-        if (title) options.setSessionName(title);
+        if (result.title) {
+          options.setSessionName(result.title);
+        } else if (result.lengthLimitExceeded) {
+          options.warn("Session title generation stopped after 3 retries because the title exceeded the length limit.");
+        }
       })
       .catch(() => undefined)
       .finally(() => {
