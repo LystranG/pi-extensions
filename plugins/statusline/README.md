@@ -41,7 +41,7 @@ pi install -l .
 - Statuses registered by other extensions through `setStatus` are merged when space permits
 - The Git branch is green, and Git changes are compacted into one field, for example `!2 !1 +3`
 - Git status shows untracked, working-tree, and staged changes as `!n` (blue), `!n` (orange), and `+n` (orange)
-- The second line shows context usage and cumulative session tokens: input uses `↓`, output uses `↑`, cache creation uses `W`, cache reads use `R`, and `󰆼` represents the latest request's cache hit rate; when model token usage is available, cache values are shown even when zero, using `K` units and carrying to `M` at four digits
+- The second line shows context usage and cumulative session tokens: input uses `↓`, output uses `↑`, cache creation uses `W`, cache reads use `R`, and `󰆼` represents the latest request's cache hit rate; cache values below `1K` use raw token units so non-zero writes are not rounded to `0K`, while larger values use `K` and carry to `M`
 - Context and session token/cache statistics occupy the second line; known `mcp` and `pi-lens-lsp` statuses appear on the third line as `󰒍 MCP:` and `LSP Active`, preserving their original text and theme colors
 - Unknown or renamed third-party extension statuses are preserved dynamically on the main status line; known keys are used only for special layout and the MCP icon
 - Context icons show `○`, `◔`, `◑`, `◕`, or `●` based on usage; usage above 80% uses the theme's error color

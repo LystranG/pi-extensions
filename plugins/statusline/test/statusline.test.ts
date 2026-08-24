@@ -89,6 +89,9 @@ describe("session usage", () => {
     expect(formatSessionUsage({ input: 1_000, output: 200, cacheRead: 0, cacheWrite: 0, latestCacheHitRate: 0 })).toBe(
       "↓1K ↑0.2K W0K R0K 󰆼0.0%",
     );
+    expect(formatSessionUsage({ input: 1_000, output: 200, cacheRead: 0, cacheWrite: 32, latestCacheHitRate: 0 })).toBe(
+      "↓1K ↑0.2K W32 R0K 󰆼0.0%",
+    );
     expect(formatSessionUsage({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })).toBeUndefined();
   });
 });

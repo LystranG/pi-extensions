@@ -134,6 +134,12 @@ export function formatTokenCount(value: number): string {
   return `${thousands.toFixed(precision).replace(/\.0$/, "")}K`;
 }
 
+// 缓存统计在一千 token 以下保留原始数量，避免非零值显示成零
+function formatCacheTokenCount(value: number): string {
+  const absoluteValue = Math.max(0, value);
+  return absoluteValue > 0 && absoluteValue < 1_000 ? absoluteValue.toString() : formatTokenCount(absoluteValue);
+}
+
 export function calculateSessionUsage(
   entries: ReadonlyArray<{
     type: string;
@@ -166,8 +172,8 @@ export function formatSessionUsage(totals: SessionUsageTotals): string | undefin
   if (totals.input > 0) parts.push(`↓${formatTokenCount(totals.input)}`);
   if (totals.output > 0) parts.push(`↑${formatTokenCount(totals.output)}`);
   if (parts.length > 0) {
-    parts.push(`W${formatTokenCount(totals.cacheWrite)}`);
-    parts.push(`R${formatTokenCount(totals.cacheRead)}`);
+    parts.push(`W${formatCacheTokenCount(totals.cacheWrite)}`);
+    parts.push(`R${formatCacheTokenCount(totals.cacheRead)}`);
     if (totals.latestCacheHitRate !== undefined) {
       parts.push(`󰆼${totals.latestCacheHitRate.toFixed(1)}%`);
     }
