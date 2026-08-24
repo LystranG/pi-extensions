@@ -37,6 +37,17 @@
         "@earendil-works/pi-coding-agent": ">=0.84.2",
       },
     },
+    "plugins/pi-session-rename": {
+      "name": "@lystran/pi-session-rename",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@earendil-works/pi-coding-agent": "0.84.2",
+        "@types/bun": "^1.3.0",
+      },
+      "peerDependencies": {
+        "@earendil-works/pi-coding-agent": ">=0.84.2",
+      },
+    },
     "plugins/serena-hooks": {
       "name": "@lystran/pi-serena-hooks",
       "version": "0.1.0",
@@ -188,6 +199,8 @@
     "@lystran/pi-mvn-compact": ["@lystran/pi-mvn-compact@workspace:plugins/mvn-compact"],
 
     "@lystran/pi-serena-hooks": ["@lystran/pi-serena-hooks@workspace:plugins/serena-hooks"],
+
+    "@lystran/pi-session-rename": ["@lystran/pi-session-rename@workspace:plugins/pi-session-rename"],
 
     "@lystran/pi-statusline": ["@lystran/pi-statusline@workspace:plugins/statusline"],
 
