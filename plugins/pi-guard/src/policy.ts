@@ -19,16 +19,30 @@ export async function decideCommand(
     return { deny: true, reason: "Matched a Pi Guard denial rule", rule };
   }
   const decision = await checker(command);
-  if (!rule) return decision;
-  if (!ctx.hasUI) {
-    return config.headless === "allow"
-      ? { deny: false, reason: "" }
-      : { deny: true, reason: `${decision.reason} (no confirmation UI is available)`, rule };
+  if (!decision.deny) {
+    return rule?.mode === "confirm" ? confirmCommand(command, decision.reason, rule, config.headless, ctx) : decision;
   }
-  const ruleText = `\nMatching rule: ${rule.command} (${rule.match ?? "exact"})`;
+  if (!rule && config.defaultMode === "deny") return decision;
+  return confirmCommand(command, decision.reason, rule, config.headless, ctx);
+}
+
+/** 在可用界面中确认危险命令 */
+async function confirmCommand(
+  command: string,
+  reason: string,
+  rule: GuardDecision["rule"],
+  headless: GuardConfig["headless"],
+  ctx: GuardContext,
+): Promise<GuardDecision> {
+  if (!ctx.hasUI) {
+    return headless === "allow"
+      ? { deny: false, reason: "" }
+      : { deny: true, reason: `${reason} (no confirmation UI is available)`, rule };
+  }
+  const ruleText = rule ? `\nMatching rule: ${rule.command} (${rule.match ?? "exact"})` : "";
   const confirmed = await ctx.ui.confirm(
     "Confirm dangerous command",
-    `${summarizeCommand(command)}\n\n${decision.reason}${ruleText}`,
+    `${summarizeCommand(command)}\n\n${reason}${ruleText}`,
   );
   return confirmed
     ? { deny: false, reason: "" }

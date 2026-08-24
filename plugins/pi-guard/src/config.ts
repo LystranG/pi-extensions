@@ -1,9 +1,37 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { GuardConfig, GuardRule } from "./types.ts";
 
-const DEFAULT_CONFIG: Omit<GuardConfig, "rules"> = { binary: "dcg", headless: "deny", timeoutMs: 2_000 };
+const DEFAULT_CONFIG: Omit<GuardConfig, "rules"> = {
+  binary: "dcg",
+  defaultMode: "confirm",
+  headless: "deny",
+  timeoutMs: 2_000,
+};
+
+/** 在没有任何配置时创建用户级默认配置 */
+export function ensureGuardConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd = process.cwd(),
+  userHome = homedir(),
+): void {
+  if (env.PI_GUARD_CONFIG?.trim()) return;
+  const projectPath = join(cwd, ".pi", "guard.json");
+  if (existsSync(projectPath)) return;
+  const userPath = join(userHome, ".pi", "agent", "guard.json");
+  if (existsSync(userPath)) return;
+  mkdirSync(dirname(userPath), { recursive: true });
+  try {
+    writeFileSync(
+      userPath,
+      `${JSON.stringify({ defaultMode: DEFAULT_CONFIG.defaultMode, headless: DEFAULT_CONFIG.headless, rules: [] }, null, 2)}\n`,
+      { encoding: "utf8", flag: "wx" },
+    );
+  } catch (error) {
+    if (!error || typeof error !== "object" || (error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+}
 
 /** 校验数组形式的规则 */
 function parseRuleList(rawRules: unknown[]): GuardRule[] {
@@ -41,9 +69,13 @@ function parsePermissionMap(value: Record<string, unknown>): GuardRule[] {
 }
 
 /** 校验 JSON 配置 */
-function parseConfig(value: unknown): Pick<GuardConfig, "headless" | "rules"> {
+function parseConfig(value: unknown): Pick<GuardConfig, "defaultMode" | "headless" | "rules"> {
   if (typeof value !== "object" || value === null) throw new Error("Pi Guard configuration must be a JSON object");
   const record = value as Record<string, unknown>;
+  const defaultMode = record.defaultMode ?? DEFAULT_CONFIG.defaultMode;
+  if (defaultMode !== "deny" && defaultMode !== "confirm") {
+    throw new Error("Pi Guard defaultMode must be deny or confirm");
+  }
   const headless = record.headless ?? DEFAULT_CONFIG.headless;
   if (headless !== "deny" && headless !== "allow") throw new Error("Pi Guard headless must be deny or allow");
   const permission = record.permission;
@@ -59,7 +91,7 @@ function parseConfig(value: unknown): Pick<GuardConfig, "headless" | "rules"> {
         : (() => {
             throw new Error("Pi Guard rules or permission.bash must be an object or array");
           })();
-  return { headless, rules };
+  return { defaultMode, headless, rules };
 }
 
 /** 从环境变量和项目或用户配置文件读取插件配置 */
@@ -67,7 +99,11 @@ export function loadGuardConfig(env: NodeJS.ProcessEnv = process.env, cwd = proc
   const configPath =
     env.PI_GUARD_CONFIG?.trim() ||
     [join(cwd, ".pi", "guard.json"), join(homedir(), ".pi", "agent", "guard.json")].find(existsSync);
-  let fileConfig: Pick<GuardConfig, "headless" | "rules"> = { headless: DEFAULT_CONFIG.headless, rules: [] };
+  let fileConfig: Pick<GuardConfig, "defaultMode" | "headless" | "rules"> = {
+    defaultMode: DEFAULT_CONFIG.defaultMode,
+    headless: DEFAULT_CONFIG.headless,
+    rules: [],
+  };
   if (configPath) {
     try {
       fileConfig = parseConfig(JSON.parse(readFileSync(configPath, "utf8")));
@@ -83,5 +119,11 @@ export function loadGuardConfig(env: NodeJS.ProcessEnv = process.env, cwd = proc
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) {
     throw new Error("DCG_PI_TIMEOUT_MS must be an integer between 1 and 60000");
   }
-  return { binary: env.DCG_BIN?.trim() || DEFAULT_CONFIG.binary, headless, timeoutMs, rules: fileConfig.rules };
+  return {
+    binary: env.DCG_BIN?.trim() || DEFAULT_CONFIG.binary,
+    defaultMode: fileConfig.defaultMode,
+    headless,
+    timeoutMs,
+    rules: fileConfig.rules,
+  };
 }

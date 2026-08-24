@@ -12,9 +12,13 @@ pi install -l .
 
 You can also add the published package to Pi's extension configuration
 
+## Integrated Plugins
+
+- `@howaboua/pi-codex-conversion`
+
 ## Configuration
 
-The plugin denies commands that dcg considers dangerous by default. Rule files are searched in this order:
+The plugin asks for confirmation when dcg considers a command dangerous by default. If no configuration exists, the plugin creates `~/.pi/agent/guard.json` with this policy. Existing configuration files are never overwritten. Rule files are searched in this order:
 
 - Project configuration: `.pi/guard.json`
 - User configuration: `~/.pi/agent/guard.json`
@@ -24,17 +28,18 @@ Example configuration:
 
 ```json
 {
-  "defaultMode": "deny",
+  "defaultMode": "confirm",
   "headless": "deny",
   "rules": [
-    { "command": "rm -rf *", "mode": "confirm" },
-    { "command": "git reset --hard *", "mode": "confirm" },
+    { "command": "rm -rf *", "mode": "deny" },
     { "command": "git clean -fd *", "mode": "deny" }
   ]
 }
 ```
 
-Rules only override commands that dcg has already classified as dangerous; dcg continues to evaluate and execute ordinary safe commands. Rules are matched in file order, and the first match wins. In a command containing `*`, `*` matches any number of characters
+`defaultMode` controls dangerous commands that do not match a specific rule. It defaults to `confirm`, so a confirmation dialog is shown for every command that dcg classifies as dangerous. A matching rule overrides `defaultMode`, so use `mode: "deny"` for commands that must never be approved interactively
+
+Rules only apply after dcg has classified a command as dangerous, except that a matching `mode: "confirm"` rule also asks about commands dcg considers safe. dcg continues to evaluate and execute ordinary safe commands. Rules are matched in file order, and the first match wins. In a command containing `*`, `*` matches any number of characters
 
 You can also explicitly use `match: "exact"`, `"prefix"`, `"wildcard"`, or `"regex"`. When `match` is omitted, commands without `*` use exact matching and commands containing `*` use wildcard matching
 

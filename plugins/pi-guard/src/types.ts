@@ -19,6 +19,8 @@ export interface GuardRule {
 export interface GuardConfig {
   /** dcg 可执行文件路径 */
   binary: string;
+  /** 未命中具体规则时的危险命令处理模式 */
+  defaultMode: GuardMode;
   /** 没有可用 UI 时的处理方式 */
   headless: HeadlessMode;
   /** 单次 dcg 判定的超时时间 */

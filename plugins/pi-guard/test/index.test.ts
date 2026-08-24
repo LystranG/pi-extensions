@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { decideToolCall, type GuardConfig, loadGuardConfig } from "../src/index.ts";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { decideToolCall, ensureGuardConfig, type GuardConfig, loadGuardConfig } from "../src/index.ts";
 
 const config: GuardConfig = {
   binary: "dcg",
+  defaultMode: "confirm",
   headless: "deny",
   timeoutMs: 2_000,
   rules: [],
@@ -17,7 +21,7 @@ describe("destructive command guard policy", () => {
   test("denies dangerous commands in deny mode", async () => {
     const result = await decideToolCall(
       "git reset --hard",
-      config,
+      { ...config, defaultMode: "deny" },
       async () => ({
         deny: true,
         reason: "History will be rewritten",
@@ -68,11 +72,64 @@ describe("destructive command guard policy", () => {
     expect(denied.deny).toBe(true);
     expect(allowed.deny).toBe(false);
   });
+
+  test("uses the default confirmation mode for unmatched dangerous commands", async () => {
+    let confirmations = 0;
+    const result = await decideToolCall(
+      "node -e redirect-to-dynamic-path",
+      { ...config, defaultMode: "confirm" },
+      async () => ({ deny: true, reason: "Requires human approval" }),
+      {
+        hasUI: true,
+        ui: {
+          confirm: async () => {
+            confirmations++;
+            return true;
+          },
+          notify: (): void => {},
+        },
+      },
+    );
+    expect(confirmations).toBe(1);
+    expect(result).toEqual({ deny: false, reason: "" });
+  });
 });
 
 describe("configuration", () => {
+  test("creates a confirm-by-default user configuration when none exists", () => {
+    const home = mkdtempSync(join(tmpdir(), "pi-guard-home-"));
+    const cwd = mkdtempSync(join(tmpdir(), "pi-guard-cwd-"));
+    const configPath = join(home, ".pi", "agent", "guard.json");
+    try {
+      ensureGuardConfig({}, cwd, home);
+      expect(JSON.parse(readFileSync(configPath, "utf8"))).toEqual({
+        defaultMode: "confirm",
+        headless: "deny",
+        rules: [],
+      });
+
+      writeFileSync(configPath, JSON.stringify({ defaultMode: "deny" }));
+      ensureGuardConfig({}, cwd, home);
+      expect(JSON.parse(readFileSync(configPath, "utf8")).defaultMode).toBe("deny");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   test("loads safe defaults", () => {
     expect(loadGuardConfig({})).toEqual(config);
+  });
+
+  test("loads the configured default mode", () => {
+    const directory = mkdtempSync(join(tmpdir(), "pi-guard-"));
+    const configPath = join(directory, "guard.json");
+    writeFileSync(configPath, JSON.stringify({ defaultMode: "confirm" }));
+    try {
+      expect(loadGuardConfig({ PI_GUARD_CONFIG: configPath }).defaultMode).toBe("confirm");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test("rejects invalid configuration", () => {

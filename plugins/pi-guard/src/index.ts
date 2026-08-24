@@ -1,5 +1,5 @@
 import { type ExtensionAPI, isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { loadGuardConfig } from "./config.ts";
+import { ensureGuardConfig, loadGuardConfig } from "./config.ts";
 import { createDcgChecker } from "./dcg.ts";
 import { confirmStdinInput, decideCommand, summarizeCommand } from "./policy.ts";
 import { extractToolRequest } from "./tools.ts";
@@ -17,6 +17,7 @@ export * from "./types.ts";
 export default function piGuardExtension(pi: ExtensionAPI): void {
   let config: GuardConfig;
   try {
+    ensureGuardConfig();
     config = loadGuardConfig();
   } catch (error) {
     pi.on("tool_call", async (event, ctx) => {
