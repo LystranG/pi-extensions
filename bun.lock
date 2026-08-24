@@ -14,7 +14,7 @@
     },
     "plugins/mvn-compact": {
       "name": "@lystran/pi-mvn-compact",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@earendil-works/pi-ai": ">=0.84.2",
       },
@@ -40,6 +40,9 @@
     "plugins/pi-session-rename": {
       "name": "@lystran/pi-session-rename",
       "version": "0.1.0",
+      "dependencies": {
+        "@earendil-works/pi-ai": ">=0.84.2",
+      },
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "0.84.2",
         "@types/bun": "^1.3.0",
@@ -50,7 +53,7 @@
     },
     "plugins/serena-hooks": {
       "name": "@lystran/pi-serena-hooks",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "devDependencies": {
         "@earendil-works/pi-coding-agent": "0.84.2",
         "@types/bun": "^1.3.0",
