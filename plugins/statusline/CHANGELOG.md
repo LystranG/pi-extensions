@@ -1,5 +1,11 @@
 # @lystran/pi-statusline
 
+## 0.1.2
+
+### Patch Changes
+
+- e481939: Add a shortcut to copy logical input text without terminal line-padding spaces
+
 ## 0.1.1
 
 ### Patch Changes
