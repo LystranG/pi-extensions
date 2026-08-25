@@ -33,6 +33,7 @@ pi install -l .
 - Missing session names, Git data, models, thinking levels, and context data do not display placeholders
 - The statusline uses the current Pi theme instead of hard-coded ANSI colors
 - The first input line uses the theme accent color for the `❯` prompt; multi-line input and completion continue to use Pi's default editor behavior
+- Press `Ctrl+Shift+C` in the input editor to copy the logical input text without terminal line-padding spaces; `Ctrl+C` keeps Pi's default clear/interrupt behavior
 - Status items use `·` for clear grouping, with Nerd Font icons for directory, model, thinking, context, and cache information
 - The multi-line statusline uses a terminal-width rounded frame, with the first and last status items embedded in the top and bottom borders
 - The local date and time, precise to the minute, appear at the right side of the first line and are hidden when space is insufficient

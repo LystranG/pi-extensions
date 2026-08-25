@@ -4,6 +4,7 @@ import {
   calculateSessionUsage,
   contextProgressIcon,
   contextUsageColor,
+  copyEditorText,
   formatContextUsage,
   formatCwdForStatusline,
   formatGitChanges,
@@ -39,6 +40,36 @@ describe("formatCwdForStatusline", () => {
 describe("formatStatuslineDateTime", () => {
   test("formats local date and time to minutes", () => {
     expect(formatStatuslineDateTime(new Date(2026, 7, 21, 9, 5, 42))).toBe("2026-08-21 09:05");
+  });
+});
+
+describe("copyEditorText", () => {
+  test("copies the logical editor text without changing its whitespace", async () => {
+    let copied = "";
+    const result = await copyEditorText("first line\n  second line\n", async (text) => {
+      copied = text;
+    });
+
+    expect(result).toBe(true);
+    expect(copied).toBe("first line\n  second line\n");
+  });
+
+  test("reports clipboard failures without throwing", async () => {
+    const result = await copyEditorText("text", async () => {
+      throw new Error("clipboard unavailable");
+    });
+
+    expect(result).toBe(false);
+  });
+
+  test("does not copy an empty editor", async () => {
+    let called = false;
+    const result = await copyEditorText("", async () => {
+      called = true;
+    });
+
+    expect(result).toBe(false);
+    expect(called).toBe(false);
   });
 });
 

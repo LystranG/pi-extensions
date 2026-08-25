@@ -1,5 +1,5 @@
-import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { CustomEditor, copyToClipboard, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const SEPARATOR = " · ";
 const INPUT_PROMPT = "❯ ";
@@ -42,6 +42,20 @@ export interface SessionUsageTotals extends TokenUsageValue {
   latestCacheHitRate?: number;
 }
 
+// 将编辑器中的逻辑文本复制到系统剪贴板
+export async function copyEditorText(
+  text: string,
+  copy: (value: string) => Promise<void> = copyToClipboard,
+): Promise<boolean> {
+  if (text.length === 0) return false;
+  try {
+    await copy(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // 将本地日期时间格式化到分钟
 export function formatStatuslineDateTime(date: Date): string {
   const pad = (value: number) => value.toString().padStart(2, "0");
@@ -60,6 +74,14 @@ class PromptEditor extends CustomEditor {
   ) {
     super(tui, theme, keybindings);
     this.prompt = prompt;
+  }
+
+  override handleInput(data: string): void {
+    if (matchesKey(data, "ctrl+shift+c")) {
+      void copyEditorText(this.getExpandedText());
+      return;
+    }
+    super.handleInput(data);
   }
 
   override render(width: number): string[] {
