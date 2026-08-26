@@ -47,3 +47,5 @@ pi install -l .
 - Unknown or renamed third-party extension statuses are preserved dynamically on the main status line; known keys are used only for special layout and the MCP icon
 - Context icons show `○`, `◔`, `◑`, `◕`, or `●` based on usage; usage above 80% uses the theme's error color
 - The custom footer is enabled only in TUI mode
+- Assistant turn errors are displayed in a dedicated error widget above the editor, keeping error text out of the framed statusline; the widget is cleared when the next turn starts
+- Provider streaming JSON parser diagnostics, including OpenAI Responses events, are intercepted from the provider logger and shown in the same error widget instead of being written directly into the TUI

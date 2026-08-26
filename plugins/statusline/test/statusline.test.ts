@@ -8,9 +8,11 @@ import {
   formatContextUsage,
   formatCwdForStatusline,
   formatGitChanges,
+  formatProviderConsoleError,
   formatSessionUsage,
   formatStatuslineDateTime,
   formatTokenCount,
+  formatTurnError,
   frameStatuslineLines,
   groupExtensionStatuses,
   layoutStatusline,
@@ -139,6 +141,37 @@ describe("context progress", () => {
   test("uses error color only above 80 percent", () => {
     expect(contextUsageColor(80)).toBe("muted");
     expect(contextUsageColor(80.1)).toBe("error");
+  });
+});
+
+describe("turn errors", () => {
+  test("extracts assistant errors for the editor-adjacent widget", () => {
+    expect(formatTurnError({ role: "assistant", stopReason: "error", errorMessage: "  malformed response  " })).toBe(
+      "malformed response",
+    );
+  });
+
+  test("ignores successful and non-assistant messages", () => {
+    expect(formatTurnError({ role: "assistant", stopReason: "stop", errorMessage: "ignored" })).toBeUndefined();
+    expect(formatTurnError({ role: "toolResult", stopReason: "error", errorMessage: "ignored" })).toBeUndefined();
+  });
+
+  test("uses a stable fallback when Pi omits the error message", () => {
+    expect(formatTurnError({ role: "assistant", stopReason: "error" })).toBe("Error");
+    expect(formatTurnError({ role: "assistant", stopReason: "error", errorMessage: "  " })).toBe("Error");
+  });
+});
+
+describe("provider console errors", () => {
+  test("captures Responses streaming parser errors with their payload", () => {
+    expect(
+      formatProviderConsoleError(["Could not parse message into JSON:", '{"type":"response.output_text.delta"']),
+    ).toBe('Could not parse message into JSON: {"type":"response.output_text.delta"');
+  });
+
+  test("does not capture unrelated console errors", () => {
+    expect(formatProviderConsoleError(["network failure", "retrying"])).toBeUndefined();
+    expect(formatProviderConsoleError(["From chunk:", "raw data"])).toBeUndefined();
   });
 });
 
