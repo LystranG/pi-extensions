@@ -6,6 +6,8 @@ Commands, `!`/`!!` shell input, extension-generated input, queued steering/follo
 
 Generated names must contain at most 10 Chinese characters and at most 5 non-Chinese words. An oversized result is rejected and regenerated up to 3 times. If all retries exceed the limit, the session keeps its existing name and Pi shows an English warning.
 
+If the background title request fails, Pi shows an English warning and the extension leaves the session unchanged. Interrupted or failed first turns are discarded after the agent settles, so a later ordinary turn can still be named.
+
 ## Install
 
 ```bash

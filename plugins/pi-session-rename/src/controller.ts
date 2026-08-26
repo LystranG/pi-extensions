@@ -41,7 +41,7 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     modelRegistry: ExtensionContext["modelRegistry"],
     message: Pick<AssistantMessage, "role" | "stopReason">,
   ): void => {
-    if (!candidate || message.role !== "assistant" || !model) return;
+    if (!candidate || message.role !== "assistant") return;
 
     if (message.stopReason === "error" || message.stopReason === "aborted" || message.stopReason === "deferred") {
       turnFailed = true;
@@ -50,6 +50,11 @@ export function createSessionRenameController(options: SessionRenameControllerOp
 
     if (message.stopReason === "toolUse") return;
     if (message.stopReason !== "stop" && message.stopReason !== "length") return;
+    if (!model) {
+      turnFailed = true;
+      options.warn("Session title generation skipped because no model is available.");
+      return;
+    }
     turnFailed = false;
     startRename(model, modelRegistry);
   };
@@ -77,7 +82,11 @@ export function createSessionRenameController(options: SessionRenameControllerOp
           options.warn("Session title generation stopped after 3 retries because the title exceeded the length limit.");
         }
       })
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if (abortController.signal.aborted) return;
+        const detail = error instanceof Error ? error.message : String(error);
+        options.warn(`Session title generation failed: ${detail}`);
+      })
       .finally(() => {
         if (activeAbortController === abortController) activeAbortController = undefined;
       });

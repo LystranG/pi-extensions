@@ -212,6 +212,47 @@ describe("session rename controller", () => {
     expect(sessionName).toBe("Later completed turn");
   });
 
+  test("does not get stuck when the first completed turn has no model", () => {
+    const warnings: string[] = [];
+    let calls = 0;
+    const controller = createSessionRenameController({
+      getSessionName: () => undefined,
+      setSessionName: () => undefined,
+      generateTitle: async () => {
+        calls++;
+        return { title: "Should not happen", lengthLimitExceeded: false };
+      },
+      warn: (message) => warnings.push(message),
+    });
+
+    controller.onInput({ text: "No model request", source: "interactive" });
+    controller.onTurnEnd(undefined, {} as never, { role: "assistant", stopReason: "stop" });
+    controller.onAgentSettled();
+    controller.onInput({ text: "Retry after model setup", source: "interactive" });
+    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
+
+    expect(calls).toBe(1);
+    expect(warnings).toEqual(["Session title generation skipped because no model is available."]);
+  });
+
+  test("warns when the background title request fails", async () => {
+    const warnings: string[] = [];
+    const controller = createSessionRenameController({
+      getSessionName: () => undefined,
+      setSessionName: () => undefined,
+      generateTitle: async () => {
+        throw new Error("provider unavailable");
+      },
+      warn: (message) => warnings.push(message),
+    });
+
+    controller.onInput({ text: "Provider failure", source: "interactive" });
+    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(warnings).toEqual(["Session title generation failed: provider unavailable"]);
+  });
+
   test("aborts the background request on session shutdown", () => {
     let signal: AbortSignal | undefined;
     const controller = createSessionRenameController({
