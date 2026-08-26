@@ -1,5 +1,11 @@
 # @lystran/pi-serena-hooks
 
+## 0.1.3
+
+### Patch Changes
+
+- 9290062: Re-run the Serena activate hook when a resumed session receives a message at its first user message
+
 ## 0.1.2
 
 ### Patch Changes
