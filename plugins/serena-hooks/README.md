@@ -84,6 +84,7 @@ Using the `claude-code` format does not require Claude Code and does not launch 
 | Pi event | Command |
 | --- | --- |
 | Any `session_start` | `serena-hooks activate --client claude-code` |
+| A user message sent after resuming at the session's first user message | `serena-hooks activate --client claude-code` again |
 | Before a model code-search call | `serena-hooks remind --client claude-code` |
 | `session_shutdown` with reason `quit` | `serena-hooks cleanup --client claude-code` |
 
