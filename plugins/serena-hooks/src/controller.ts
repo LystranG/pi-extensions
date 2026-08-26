@@ -19,13 +19,27 @@ function resultFailure(result: SerenaHookResult): string | undefined {
 export class SerenaHooksController {
   readonly #execute: SerenaHookExecutor;
   readonly #warnedActions = new Set<SerenaHookAction>();
+  // 标记 resume 是否定位到了首条用户消息
+  #resumeFirstMessagePending = false;
 
   constructor(execute: SerenaHookExecutor) {
     this.#execute = execute;
   }
 
-  async sessionStart(sessionId: string, warn: SerenaHookWarning): Promise<SerenaHookResult | undefined> {
+  async sessionStart(
+    sessionId: string,
+    warn: SerenaHookWarning,
+    options: { resumeAtFirstMessage?: boolean } = {},
+  ): Promise<SerenaHookResult | undefined> {
     this.#warnedActions.clear();
+    this.#resumeFirstMessagePending = options.resumeAtFirstMessage ?? false;
+    return this.#run("activate", { session_id: sessionId }, warn);
+  }
+
+  // 在 resume 后首条用户消息到达时重新执行 activate
+  async resumeFirstMessage(sessionId: string, warn: SerenaHookWarning): Promise<SerenaHookResult | undefined> {
+    if (!this.#resumeFirstMessagePending) return undefined;
+    this.#resumeFirstMessagePending = false;
     return this.#run("activate", { session_id: sessionId }, warn);
   }
 

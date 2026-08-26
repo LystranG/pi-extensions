@@ -28,6 +28,22 @@ describe("SerenaHooksController", () => {
     expect(state.calls).toEqual(["activate", "activate", "activate", "activate", "activate"]);
   });
 
+  test("reactivates once when sending from the first message after resume", async () => {
+    const state = setup();
+    await state.controller.sessionStart("session", state.warn, { resumeAtFirstMessage: true });
+    await state.controller.resumeFirstMessage("session", state.warn);
+    await state.controller.resumeFirstMessage("session", state.warn);
+    expect(state.calls).toEqual(["activate", "activate"]);
+  });
+
+  test("does not reactivate after other session starts", async () => {
+    const state = setup();
+    await state.controller.sessionStart("session", state.warn, { resumeAtFirstMessage: true });
+    await state.controller.sessionStart("session", state.warn);
+    await state.controller.resumeFirstMessage("session", state.warn);
+    expect(state.calls).toEqual(["activate", "activate"]);
+  });
+
   test("ignores ordinary model bash calls", async () => {
     const state = setup();
     await state.controller.beforeTool("read", { file_path: "src/index.ts" }, "session", state.warn);
