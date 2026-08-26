@@ -1,9 +1,10 @@
 import { CustomEditor, copyToClipboard, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const SEPARATOR = " · ";
 const INPUT_PROMPT = "❯ ";
 const SECONDARY_STATUS_KEYS = ["mcp", "pi-lens-lsp"] as const;
+const ERROR_WIDGET_KEY = "statusline-error";
 
 export interface ContextUsageValue {
   tokens: number | null;
@@ -40,6 +41,23 @@ export interface TokenUsageValue {
 
 export interface SessionUsageTotals extends TokenUsageValue {
   latestCacheHitRate?: number;
+}
+
+// 只接管 provider SSE JSON 解析日志，其他 stderr 错误仍保持原行为
+export function formatProviderConsoleError(args: readonly unknown[]): string | undefined {
+  const [first, second] = args;
+  if (typeof first !== "string" || !first.startsWith("Could not parse message into JSON:")) return undefined;
+  const detail = second === undefined ? "" : ` ${typeof second === "string" ? second : String(second)}`;
+  return `${first}${detail}`.trim();
+}
+
+// 从 turn_end 的 assistant 消息中提取 Pi 已归一化的错误文本
+export function formatTurnError(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const candidate = message as { role?: unknown; stopReason?: unknown; errorMessage?: unknown };
+  if (candidate.role !== "assistant" || candidate.stopReason !== "error") return undefined;
+  if (typeof candidate.errorMessage !== "string") return "Error";
+  return candidate.errorMessage.trim() || "Error";
 }
 
 // 将编辑器中的逻辑文本复制到系统剪贴板
@@ -342,6 +360,7 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
   let requestRender: (() => void) | undefined;
   let refreshGitStatus: (() => void) | undefined;
   let clockRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let restoreConsoleError: (() => void) | undefined;
   let gitChanges: GitChangeCounts = { untracked: 0, unstaged: 0, staged: 0 };
   let gitRefreshId = 0;
   const refresh = () => requestRender?.();
@@ -383,6 +402,21 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
       const prompt = ctx.ui.theme.fg("accent", INPUT_PROMPT);
       return new PromptEditor(tui, theme, keybindings, prompt);
     });
+    const originalConsoleError = console.error;
+    const capturedConsoleError = (...args: unknown[]) => {
+      const error = formatProviderConsoleError(args);
+      if (!error) {
+        originalConsoleError.apply(console, args);
+        return;
+      }
+      ctx.ui.setWidget(ERROR_WIDGET_KEY, (_tui, theme) => new Text(theme.fg("error", `Error: ${error}`), 0, 0), {
+        placement: "aboveEditor",
+      });
+    };
+    console.error = capturedConsoleError;
+    restoreConsoleError = () => {
+      if (console.error === capturedConsoleError) console.error = originalConsoleError;
+    };
     scheduleClockRefresh();
     refreshGitStatus = () => void updateGitStatus(ctx.cwd);
     gitChanges = { untracked: 0, unstaged: 0, staged: 0 };
@@ -439,6 +473,18 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
   pi.on("model_select", refresh);
   pi.on("thinking_level_select", refresh);
   pi.on("session_info_changed", refresh);
+  pi.on("turn_start", (_event, ctx) => {
+    if (ctx.mode !== "tui") return;
+    ctx.ui.setWidget(ERROR_WIDGET_KEY, undefined, { placement: "aboveEditor" });
+  });
+  pi.on("turn_end", (event, ctx) => {
+    if (ctx.mode !== "tui") return;
+    const error = formatTurnError(event.message);
+    if (!error) return;
+    ctx.ui.setWidget(ERROR_WIDGET_KEY, (_tui, theme) => new Text(theme.fg("error", `Error: ${error}`), 0, 0), {
+      placement: "aboveEditor",
+    });
+  });
   pi.on("message_end", () => {
     refreshGitStatus?.();
     refresh();
@@ -449,6 +495,8 @@ export default function statuslineExtension(pi: ExtensionAPI): void {
   });
   pi.on("session_compact", refresh);
   pi.on("session_shutdown", () => {
+    restoreConsoleError?.();
+    restoreConsoleError = undefined;
     gitRefreshId++;
     if (clockRefreshTimer) clearTimeout(clockRefreshTimer);
     clockRefreshTimer = undefined;
