@@ -1,5 +1,12 @@
 # @lystran/pi-statusline
 
+## 0.1.3
+
+### Patch Changes
+
+- 1357d7f: Keep provider streaming parser errors in a dedicated widget above the editor so they do not corrupt the framed statusline.
+- a260344: Revert the 0.1.3 error widget feature: provider streaming parser errors are no longer intercepted or shown above the editor, restoring the previous display behavior for assistant turn errors
+
 ## 0.1.2
 
 ### Patch Changes
