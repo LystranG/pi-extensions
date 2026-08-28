@@ -1,5 +1,11 @@
 # @lystran/pi-serena-hooks
 
+## 0.1.4
+
+### Patch Changes
+
+- 892cd47: Reactivate Serena after navigating the session tree back to its root user message
+
 ## 0.1.3
 
 ### Patch Changes
