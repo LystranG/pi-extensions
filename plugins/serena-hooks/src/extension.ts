@@ -52,6 +52,10 @@ export default function serenaHooksExtension(pi: ExtensionAPI): void {
     await runActivate(result);
   });
 
+  pi.on("session_tree", (event) => {
+    controller.sessionTree(event.newLeafId);
+  });
+
   pi.on("tool_call", async (event, ctx) => {
     const result = await controller.beforeTool(
       event.toolName,
