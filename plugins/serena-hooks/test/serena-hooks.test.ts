@@ -36,6 +36,23 @@ describe("SerenaHooksController", () => {
     expect(state.calls).toEqual(["activate", "activate"]);
   });
 
+  test("reactivates once after navigating to the root user message", async () => {
+    const state = setup();
+    await state.controller.sessionStart("session", state.warn);
+    state.controller.sessionTree(null);
+    await state.controller.resumeFirstMessage("session", state.warn);
+    await state.controller.resumeFirstMessage("session", state.warn);
+    expect(state.calls).toEqual(["activate", "activate"]);
+  });
+
+  test("does not reactivate after navigating to a non-root tree entry", async () => {
+    const state = setup();
+    await state.controller.sessionStart("session", state.warn);
+    state.controller.sessionTree("entry");
+    await state.controller.resumeFirstMessage("session", state.warn);
+    expect(state.calls).toEqual(["activate"]);
+  });
+
   test("does not reactivate after other session starts", async () => {
     const state = setup();
     await state.controller.sessionStart("session", state.warn, { resumeAtFirstMessage: true });

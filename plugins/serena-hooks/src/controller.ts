@@ -43,6 +43,11 @@ export class SerenaHooksController {
     return this.#run("activate", { session_id: sessionId }, warn);
   }
 
+  // 在会话树回到根用户消息后等待下一条用户消息重新激活
+  sessionTree(newLeafId: string | null): void {
+    this.#resumeFirstMessagePending = newLeafId === null;
+  }
+
   async beforeTool(
     toolName: string,
     toolInput: Record<string, unknown>,
