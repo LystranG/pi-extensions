@@ -31,9 +31,14 @@ export function createSessionRenameController(options: SessionRenameControllerOp
   let sessionGeneration = 0;
   let activeAbortController: AbortController | undefined;
 
-  const onInput = (event: Pick<InputEvent, "text" | "source" | "streamingBehavior">): void => {
+  const onInput = (
+    event: Pick<InputEvent, "text" | "source" | "streamingBehavior">,
+    model?: Model<Api>,
+    modelRegistry?: ExtensionContext["modelRegistry"],
+  ): void => {
     if (attempted || candidate || !isEligibleInput(event)) return;
     candidate = { prompt: event.text.trim() };
+    if (model && modelRegistry) startRename(model, modelRegistry);
   };
 
   const onTurnEnd = (
