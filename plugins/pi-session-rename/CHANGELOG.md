@@ -1,5 +1,9 @@
 # @lystran/pi-session-rename
 
+## Unreleased
+
+- Start title generation in the background as soon as the first ordinary user input arrives, using the lowest reasoning level supported by the selected model
+
 ## 0.2.1
 
 ### Patch Changes

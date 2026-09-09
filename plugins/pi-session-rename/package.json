@@ -1,7 +1,7 @@
 {
   "name": "@lystran/pi-session-rename",
   "version": "0.2.1",
-  "description": "Automatically name a Pi session after its first completed user turn",
+  "description": "Automatically name a Pi session after its first ordinary user input",
   "repository": {
     "type": "git",
     "url": "https://github.com/LystranG/pi-extensions"

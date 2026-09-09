@@ -5,6 +5,7 @@ import {
   buildTitlePrompt,
   countTitleLength,
   generateTitle,
+  getTitleThinkingLevel,
   isEligibleInput,
   isTitleWithinLimit,
   normalizeTitle,
@@ -51,7 +52,8 @@ describe("title helpers", () => {
       {} as never,
       "Explain login",
       new AbortController().signal,
-      async (_model, context) => {
+      async (_model, context, options) => {
+        expect(options.reasoning).toBeUndefined();
         prompts.push(context.messages[0]?.content as string);
         return {
           role: "assistant",
@@ -64,6 +66,32 @@ describe("title helpers", () => {
     expect(prompts).toHaveLength(4);
     expect(prompts[1]).toContain("exceeded the session title length limit");
     expect(result).toEqual({ lengthLimitExceeded: true });
+  });
+
+  test("selects the lowest reasoning level supported by the model", () => {
+    expect(getTitleThinkingLevel({ reasoning: true, thinkingLevelMap: { minimal: null, low: "low" } } as never)).toBe(
+      "low",
+    );
+    expect(getTitleThinkingLevel({ reasoning: false } as never)).toBeUndefined();
+  });
+
+  test("passes the selected reasoning level to the title request", async () => {
+    let reasoning: string | undefined;
+    await generateTitle(
+      { reasoning: true, thinkingLevelMap: { minimal: null, low: "low" } } as never,
+      "Explain login",
+      new AbortController().signal,
+      async (_model, _context, options) => {
+        reasoning = options.reasoning;
+        return {
+          role: "assistant",
+          content: [{ type: "text", text: "Login fix" }],
+          stopReason: "stop",
+        } as never;
+      },
+    );
+
+    expect(reasoning).toBe("low");
   });
 });
 
@@ -92,6 +120,29 @@ describe("session rename controller", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(sessionName).toBe("Fix login flow");
+  });
+
+  test("starts background rename immediately on the first ordinary input", async () => {
+    let sessionName: string | undefined;
+    let calls = 0;
+    const controller = createSessionRenameController({
+      getSessionName: () => sessionName,
+      setSessionName: (name) => {
+        sessionName = name;
+      },
+      generateTitle: async (_model, _modelRegistry, candidate) => {
+        calls++;
+        expect(candidate.prompt).toBe("Rename immediately");
+        return { title: "Rename immediately", lengthLimitExceeded: false };
+      },
+      warn: () => undefined,
+    });
+
+    controller.onInput({ text: "Rename immediately", source: "interactive" }, {} as never, {} as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(calls).toBe(1);
+    expect(sessionName).toBe("Rename immediately");
   });
 
   test("starts naming at the first final turn and ignores later queued turns", async () => {
