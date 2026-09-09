@@ -1,5 +1,11 @@
 # @lystran/pi-session-rename
 
+## 0.2.2
+
+### Patch Changes
+
+- ddf2697: Start background session title generation on the first ordinary user input and use the lowest reasoning level supported by the selected model.
+
 ## Unreleased
 
 - Start title generation in the background as soon as the first ordinary user input arrives, using the lowest reasoning level supported by the selected model
