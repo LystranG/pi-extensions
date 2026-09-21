@@ -1,28 +1,87 @@
 import { describe, expect, test } from "bun:test";
-import { createSessionRenameController } from "../src/controller.ts";
+import { createSessionRenameController, type SessionRenameControllerOptions } from "../src/controller.ts";
 import {
   buildRetryTitlePrompt,
   buildTitlePrompt,
   countTitleLength,
+  extractUserPrompt,
   generateTitle,
   getTitleThinkingLevel,
-  isEligibleInput,
   isTitleWithinLimit,
+  isUserOriginatedInput,
   normalizeTitle,
   type TitleGenerationResult,
 } from "../src/title.ts";
 
-describe("isEligibleInput", () => {
-  test("accepts the first ordinary interactive prompt", () => {
-    expect(isEligibleInput({ text: "  fix the auth flow  ", source: "interactive" })).toBe(true);
+/** 等待后台 promise 落地 */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** 构造带可变 session 名称与记录型警告的 controller 测试环境 */
+function createHarness(generateTitle: SessionRenameControllerOptions["generateTitle"], initialName?: string) {
+  let sessionName = initialName;
+  const warnings: string[] = [];
+  const controller = createSessionRenameController({
+    getSessionName: () => sessionName,
+    setSessionName: (name) => {
+      sessionName = name;
+    },
+    warn: (message) => {
+      warnings.push(message);
+    },
+    generateTitle,
+  });
+  return {
+    controller,
+    warnings,
+    get sessionName(): string | undefined {
+      return sessionName;
+    },
+  };
+}
+
+describe("isUserOriginatedInput", () => {
+  test("accepts interactive and rpc input only when it is not queued", () => {
+    expect(isUserOriginatedInput({ source: "interactive" })).toBe(true);
+    expect(isUserOriginatedInput({ source: "rpc" })).toBe(true);
+    expect(isUserOriginatedInput({ source: "extension" })).toBe(false);
+    expect(isUserOriginatedInput({ source: "interactive", streamingBehavior: "steer" })).toBe(false);
+    expect(isUserOriginatedInput({ source: "interactive", streamingBehavior: "followUp" })).toBe(false);
+  });
+});
+
+describe("extractUserPrompt", () => {
+  test("keeps the user text that follows a skill block", () => {
+    const prompt = [
+      '<skill name="diagnosing-bugs" location="/repo/.pi/skills/diagnosing-bugs/SKILL.md">',
+      "References are relative to /repo/.pi/skills/diagnosing-bugs.",
+      "",
+      "# Diagnosing Bugs",
+      "",
+      "A discipline for hard bugs.",
+      "</skill>",
+      "",
+      "你看看 pi-rename 插件",
+    ].join("\n");
+    expect(extractUserPrompt(prompt)).toBe("你看看 pi-rename 插件");
   });
 
-  test("rejects commands, extension input, and queued streaming input", () => {
-    expect(isEligibleInput({ text: "/name project", source: "interactive" })).toBe(false);
-    expect(isEligibleInput({ text: "!git status", source: "interactive" })).toBe(false);
-    expect(isEligibleInput({ text: "follow up", source: "extension" })).toBe(false);
-    expect(isEligibleInput({ text: "steer this", source: "interactive", streamingBehavior: "steer" })).toBe(false);
-    expect(isEligibleInput({ text: "queue this", source: "interactive", streamingBehavior: "followUp" })).toBe(false);
+  test("strips several skill blocks and keeps the remaining request", () => {
+    const prompt = `<skill name="a">body a</skill>\n\n<skill name="b">body b</skill>\n\n审查这次改动`;
+    expect(extractUserPrompt(prompt)).toBe("审查这次改动");
+  });
+
+  test("passes an ordinary prompt through unchanged", () => {
+    expect(extractUserPrompt("  fix the login flow  ")).toBe("fix the login flow");
+  });
+
+  test("falls back to the whole prompt when a skill block carries no user text", () => {
+    expect(extractUserPrompt('<skill name="a">body a</skill>')).toBe('<skill name="a">body a</skill>');
+  });
+
+  test("ignores pass-through commands, shell input, and empty prompts", () => {
+    expect(extractUserPrompt("/unknown-command foo")).toBeUndefined();
+    expect(extractUserPrompt("!git status")).toBeUndefined();
+    expect(extractUserPrompt("   ")).toBeUndefined();
   });
 });
 
@@ -68,6 +127,27 @@ describe("title helpers", () => {
     expect(result).toEqual({ lengthLimitExceeded: true });
   });
 
+  test("reports a provider error instead of silently returning no title", async () => {
+    const result = await generateTitle({} as never, "Explain login", new AbortController().signal, async () => {
+      return {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage: "rate limited",
+      } as never;
+    });
+
+    expect(result).toEqual({ lengthLimitExceeded: false, error: "rate limited" });
+  });
+
+  test("stays silent when the title request was aborted", async () => {
+    const result = await generateTitle({} as never, "Explain login", new AbortController().signal, async () => {
+      return { role: "assistant", content: [], stopReason: "aborted" } as never;
+    });
+
+    expect(result).toEqual({ lengthLimitExceeded: false });
+  });
+
   test("selects the lowest reasoning level supported by the model", () => {
     expect(getTitleThinkingLevel({ reasoning: true, thinkingLevelMap: { minimal: null, low: "low" } } as never)).toBe(
       "low",
@@ -96,273 +176,226 @@ describe("title helpers", () => {
 });
 
 describe("session rename controller", () => {
-  test("starts one background rename after a settled idle turn", async () => {
-    let sessionName: string | undefined;
-    let resolveTitle: ((title: TitleGenerationResult) => void) | undefined;
-    const controller = createSessionRenameController({
-      getSessionName: () => sessionName,
-      setSessionName: (name) => {
-        sessionName = name;
-      },
-      generateTitle: async (_model, _modelRegistry, candidate, signal) =>
-        new Promise((resolve) => {
-          expect(candidate.prompt).toBe("Fix login");
-          expect(signal.aborted).toBe(false);
-          resolveTitle = resolve;
-        }),
-      warn: () => undefined,
+  test("renames on the expanded prompt of the first user turn", async () => {
+    const harness = createHarness(async (_model, _registry, candidate) => {
+      expect(candidate.prompt).toBe("Fix login");
+      return { title: "Fix login flow", lengthLimitExceeded: false };
     });
 
-    controller.onInput({ text: "Fix login", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    resolveTitle?.({ title: "Fix login flow", lengthLimitExceeded: false });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Fix login", {} as never, {} as never);
+    await settle();
 
-    expect(sessionName).toBe("Fix login flow");
+    expect(harness.sessionName).toBe("Fix login flow");
   });
 
-  test("starts background rename immediately on the first ordinary input", async () => {
-    let sessionName: string | undefined;
-    let calls = 0;
-    const controller = createSessionRenameController({
-      getSessionName: () => sessionName,
-      setSessionName: (name) => {
-        sessionName = name;
-      },
-      generateTitle: async (_model, _modelRegistry, candidate) => {
-        calls++;
-        expect(candidate.prompt).toBe("Rename immediately");
-        return { title: "Rename immediately", lengthLimitExceeded: false };
-      },
-      warn: () => undefined,
+  test("names a skill-invoked session from the user's own text", async () => {
+    // 回归：/skill: 调用曾因 input 文本以 "/" 开头被当成命令丢弃，skill 开头的 session 永远不会被命名
+    const skillPrompt = [
+      '<skill name="diagnosing-bugs" location="/repo/.pi/skills/diagnosing-bugs/SKILL.md">',
+      "# Diagnosing Bugs",
+      "",
+      "A discipline for hard bugs.",
+      "</skill>",
+      "",
+      "你看看 pi-rename 插件，根本不起作用",
+    ].join("\n");
+    const harness = createHarness(async (_model, _registry, candidate) => {
+      expect(candidate.prompt).toBe("你看看 pi-rename 插件，根本不起作用");
+      return { title: "Rename Plugin Broken", lengthLimitExceeded: false };
     });
 
-    controller.onInput({ text: "Rename immediately", source: "interactive" }, {} as never, {} as never);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart(skillPrompt, {} as never, {} as never);
+    await settle();
+
+    expect(harness.sessionName).toBe("Rename Plugin Broken");
+  });
+
+  test("ignores turns started by extension input", async () => {
+    let calls = 0;
+    const harness = createHarness(async () => {
+      calls++;
+      return { title: "Should not happen", lengthLimitExceeded: false };
+    });
+
+    harness.controller.onInput({ source: "extension" });
+    harness.controller.onBeforeAgentStart("Injected request", {} as never, {} as never);
+    await settle();
+
+    expect(calls).toBe(0);
+    expect(harness.sessionName).toBeUndefined();
+  });
+
+  test("ignores queued steering and follow-up input", async () => {
+    let calls = 0;
+    const harness = createHarness(async () => {
+      calls++;
+      return { title: "Should not happen", lengthLimitExceeded: false };
+    });
+
+    harness.controller.onInput({ source: "interactive", streamingBehavior: "steer" });
+    harness.controller.onBeforeAgentStart("Queued request", {} as never, {} as never);
+    harness.controller.onInput({ source: "interactive", streamingBehavior: "followUp" });
+    harness.controller.onBeforeAgentStart("Queued follow-up", {} as never, {} as never);
+    await settle();
+
+    expect(calls).toBe(0);
+  });
+
+  test("only the first user turn starts a rename", async () => {
+    let calls = 0;
+    const harness = createHarness(async () => {
+      calls++;
+      return { title: "First request", lengthLimitExceeded: false };
+    });
+
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("First request", {} as never, {} as never);
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Second request", {} as never, {} as never);
+    await settle();
 
     expect(calls).toBe(1);
-    expect(sessionName).toBe("Rename immediately");
+    expect(harness.sessionName).toBe("First request");
   });
 
-  test("starts naming at the first final turn and ignores later queued turns", async () => {
-    let sessionName: string | undefined;
+  test("does not overwrite an existing session name", async () => {
     let calls = 0;
-    const controller = createSessionRenameController({
-      getSessionName: () => sessionName,
-      setSessionName: (name) => {
-        sessionName = name;
-      },
-      generateTitle: async (_model, _registry, candidate) => {
-        calls++;
-        expect(candidate.prompt).toBe("First request");
-        return { title: "First request", lengthLimitExceeded: false };
-      },
-      warn: () => undefined,
-    });
+    const harness = createHarness(async () => {
+      calls++;
+      return { title: "Should not happen", lengthLimitExceeded: false };
+    }, "Existing name");
 
-    controller.onInput({ text: "First request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "toolUse" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    controller.onInput({ text: "Queued follow-up", source: "interactive", streamingBehavior: "followUp" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Fix login", {} as never, {} as never);
+    await settle();
 
-    expect(calls).toBe(1);
-    expect(sessionName).toBe("First request");
+    expect(calls).toBe(0);
+    expect(harness.sessionName).toBe("Existing name");
   });
 
-  test("waits through a retry after a network error", async () => {
-    let sessionName: string | undefined;
-    let calls = 0;
-    const controller = createSessionRenameController({
-      getSessionName: () => sessionName,
-      setSessionName: (name) => {
-        sessionName = name;
-      },
-      generateTitle: async () => {
-        calls++;
-        return { title: "Retry succeeded", lengthLimitExceeded: false };
-      },
-      warn: () => undefined,
-    });
+  test("warns when no model is available at turn start and still names a later turn", async () => {
+    const harness = createHarness(async () => ({ title: "Retry after model setup", lengthLimitExceeded: false }));
 
-    controller.onInput({ text: "Retry request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "error" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("No model request", undefined, {} as never);
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Completed request", {} as never, {} as never);
+    await settle();
 
-    expect(calls).toBe(1);
-    expect(sessionName).toBe("Retry succeeded");
-  });
-
-  test("drops an exhausted failed turn so a later prompt can be named", async () => {
-    let sessionName: string | undefined;
-    const controller = createSessionRenameController({
-      getSessionName: () => sessionName,
-      setSessionName: (name) => {
-        sessionName = name;
-      },
-      generateTitle: async () => ({ title: "Later request", lengthLimitExceeded: false }),
-      warn: () => undefined,
-    });
-
-    controller.onInput({ text: "Failed request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "error" });
-    controller.onAgentSettled();
-    controller.onInput({ text: "Later request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(sessionName).toBe("Later request");
-  });
-
-  test("does not rename after an interrupted first response", () => {
-    let called = false;
-    const controller = createSessionRenameController({
-      getSessionName: () => undefined,
-      setSessionName: () => undefined,
-      generateTitle: async () => {
-        called = true;
-        return { title: "Should not happen", lengthLimitExceeded: false };
-      },
-      warn: () => undefined,
-    });
-
-    controller.onInput({ text: "Interrupted request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "aborted" });
-    controller.onAgentSettled();
-
-    expect(called).toBe(false);
-  });
-
-  test("allows a later ordinary turn after an interruption", async () => {
-    let sessionName: string | undefined;
-    let calls = 0;
-    const controller = createSessionRenameController({
-      getSessionName: () => sessionName,
-      setSessionName: (name) => {
-        sessionName = name;
-      },
-      generateTitle: async () => {
-        calls++;
-        return { title: "Later completed turn", lengthLimitExceeded: false };
-      },
-      warn: () => undefined,
-    });
-
-    controller.onInput({ text: "Interrupted request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "aborted" });
-    controller.onAgentSettled();
-
-    controller.onInput({ text: "Completed request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(calls).toBe(1);
-    expect(sessionName).toBe("Later completed turn");
-  });
-
-  test("does not get stuck when the first completed turn has no model", () => {
-    const warnings: string[] = [];
-    let calls = 0;
-    const controller = createSessionRenameController({
-      getSessionName: () => undefined,
-      setSessionName: () => undefined,
-      generateTitle: async () => {
-        calls++;
-        return { title: "Should not happen", lengthLimitExceeded: false };
-      },
-      warn: (message) => warnings.push(message),
-    });
-
-    controller.onInput({ text: "No model request", source: "interactive" });
-    controller.onTurnEnd(undefined, {} as never, { role: "assistant", stopReason: "stop" });
-    controller.onAgentSettled();
-    controller.onInput({ text: "Retry after model setup", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-
-    expect(calls).toBe(1);
-    expect(warnings).toEqual(["Session title generation skipped because no model is available."]);
+    expect(harness.warnings).toEqual(["Session title generation skipped because no model is available."]);
+    expect(harness.sessionName).toBe("Retry after model setup");
   });
 
   test("warns when the background title request fails", async () => {
-    const warnings: string[] = [];
-    const controller = createSessionRenameController({
-      getSessionName: () => undefined,
-      setSessionName: () => undefined,
-      generateTitle: async () => {
-        throw new Error("provider unavailable");
-      },
-      warn: (message) => warnings.push(message),
+    const harness = createHarness(async () => {
+      throw new Error("provider unavailable");
     });
 
-    controller.onInput({ text: "Provider failure", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Provider failure", {} as never, {} as never);
+    await settle();
 
-    expect(warnings).toEqual(["Session title generation failed: provider unavailable"]);
+    expect(harness.warnings).toEqual(["Session title generation failed: provider unavailable"]);
+    expect(harness.sessionName).toBeUndefined();
+  });
+
+  test("warns when the provider returns an error result", async () => {
+    const harness = createHarness(async () => ({ lengthLimitExceeded: false, error: "rate limited" }));
+
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Provider error", {} as never, {} as never);
+    await settle();
+
+    expect(harness.warnings).toEqual(["Session title generation failed: rate limited"]);
+  });
+
+  test("warns in English after title length retries are exhausted", async () => {
+    const harness = createHarness(async () => ({ lengthLimitExceeded: true }));
+
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Long title request", {} as never, {} as never);
+    await settle();
+
+    expect(harness.warnings).toEqual([
+      "Session title generation stopped after 3 retries because the title exceeded the length limit.",
+    ]);
+  });
+
+  test("keeps naming after a retried first turn finally succeeds", async () => {
+    const harness = createHarness(async () => ({ title: "Retried request", lengthLimitExceeded: false }));
+
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Retry request", {} as never, {} as never);
+    harness.controller.onTurnEnd({ role: "assistant", stopReason: "error" });
+    harness.controller.onTurnEnd({ role: "assistant", stopReason: "toolUse" });
+    harness.controller.onTurnEnd({ role: "assistant", stopReason: "stop" });
+    harness.controller.onAgentSettled();
+    await settle();
+
+    expect(harness.sessionName).toBe("Retried request");
+  });
+
+  test("lets a later turn name the session when the first turn failed before the title landed", async () => {
+    let calls = 0;
+    let firstSignal: AbortSignal | undefined;
+    const harness = createHarness(async (_model, _registry, candidate, signal) => {
+      calls++;
+      if (calls === 1) {
+        firstSignal = signal;
+        return new Promise<TitleGenerationResult>((resolve) => {
+          signal.addEventListener("abort", () => resolve({ lengthLimitExceeded: false }), { once: true });
+        });
+      }
+      expect(candidate.prompt).toBe("Second request");
+      return { title: "Second request", lengthLimitExceeded: false };
+    });
+
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Interrupted request", {} as never, {} as never);
+    harness.controller.onTurnEnd({ role: "assistant", stopReason: "aborted" });
+    harness.controller.onAgentSettled();
+    expect(firstSignal?.aborted).toBe(true);
+
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Second request", {} as never, {} as never);
+    await settle();
+
+    expect(calls).toBe(2);
+    expect(harness.sessionName).toBe("Second request");
   });
 
   test("aborts the background request on session shutdown", () => {
     let signal: AbortSignal | undefined;
-    const controller = createSessionRenameController({
-      getSessionName: () => undefined,
-      setSessionName: () => undefined,
-      generateTitle: async (_model, _modelRegistry, _candidate, requestSignal) => {
-        signal = requestSignal;
-        return new Promise(() => undefined);
-      },
-      warn: () => undefined,
+    const harness = createHarness(async (_model, _registry, _candidate, requestSignal) => {
+      signal = requestSignal;
+      return new Promise(() => undefined);
     });
 
-    controller.onInput({ text: "Long request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    controller.onSessionShutdown();
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Long request", {} as never, {} as never);
+    harness.controller.onSessionShutdown();
 
     expect(signal?.aborted).toBe(true);
   });
 
   test("does not let an old title request rename a new session", async () => {
-    let sessionName: string | undefined;
-    let resolveTitle: ((title: TitleGenerationResult) => void) | undefined;
-    const controller = createSessionRenameController({
-      getSessionName: () => sessionName,
-      setSessionName: (name) => {
-        sessionName = name;
-      },
-      generateTitle: async () =>
-        new Promise((resolve) => {
+    let resolveTitle: ((result: TitleGenerationResult) => void) | undefined;
+    const harness = createHarness(
+      async () =>
+        new Promise<TitleGenerationResult>((resolve) => {
           resolveTitle = resolve;
         }),
-      warn: () => undefined,
-    });
+    );
 
-    controller.onInput({ text: "Old session", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    controller.onSessionShutdown();
-    controller.onSessionStart();
+    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onBeforeAgentStart("Old session", {} as never, {} as never);
+    harness.controller.onSessionShutdown();
+    harness.controller.onSessionStart();
     resolveTitle?.({ title: "Old title", lengthLimitExceeded: false });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await settle();
 
-    expect(sessionName).toBeUndefined();
-  });
-
-  test("warns in English after title length retries are exhausted", async () => {
-    const warnings: string[] = [];
-    const controller = createSessionRenameController({
-      getSessionName: () => undefined,
-      setSessionName: () => undefined,
-      warn: (message) => warnings.push(message),
-      generateTitle: async () => ({ lengthLimitExceeded: true }),
-    });
-
-    controller.onInput({ text: "Long title request", source: "interactive" });
-    controller.onTurnEnd({} as never, {} as never, { role: "assistant", stopReason: "stop" });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(warnings).toEqual([
-      "Session title generation stopped after 3 retries because the title exceeded the length limit.",
-    ]);
+    expect(harness.sessionName).toBeUndefined();
   });
 });

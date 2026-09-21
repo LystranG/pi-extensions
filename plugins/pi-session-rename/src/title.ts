@@ -18,6 +18,8 @@ export interface TitleLength {
 export interface TitleGenerationResult {
   title?: string;
   lengthLimitExceeded: boolean;
+  /** provider 报错时的错误信息，供调用方向用户发出警告 */
+  error?: string;
 }
 
 /** 读取模型支持的最低 reasoning 等级，不支持 reasoning 时省略请求参数 */
@@ -25,15 +27,27 @@ export function getTitleThinkingLevel(model: Model<Api>): ThinkingLevel | undefi
   return getSupportedThinkingLevels(model).find((level): level is ThinkingLevel => level !== "off");
 }
 
-/** 判断输入是否是可用于首次自动命名的普通用户提示 */
-export function isEligibleInput(event: {
-  text: string;
+/** Pi 展开 `/skill:<name>` 时注入的技能说明块，位于用户自己写的内容之前 */
+const SKILL_BLOCK_PATTERN = /<skill\b[^>]*>[\s\S]*?<\/skill>/gu;
+
+/** 判断输入事件是否来自用户本人，扩展注入与流式排队输入都不算 */
+export function isUserOriginatedInput(event: {
   source: "interactive" | "rpc" | "extension";
   streamingBehavior?: "steer" | "followUp";
 }): boolean {
-  const text = event.text.trim();
-  if (event.source === "extension" || event.streamingBehavior !== undefined || text.length === 0) return false;
-  return !text.startsWith("/") && !text.startsWith("!");
+  return event.source !== "extension" && event.streamingBehavior === undefined;
+}
+
+/**
+ * 从已经过展开的提示里取出用户自己写的内容，作为标题来源
+ * skill 调用展开后会拼上大段技能说明，因此先剥离技能块；只有技能块时回退到整段提示
+ * 仍然以 / 或 ! 开头说明这是未被展开的命令或原样透传的输入，不作为命名依据
+ */
+export function extractUserPrompt(prompt: string): string | undefined {
+  const withoutSkillBlocks = prompt.replace(SKILL_BLOCK_PATTERN, " ").trim();
+  const source = withoutSkillBlocks.length > 0 ? withoutSkillBlocks : prompt.trim();
+  if (source.length === 0) return undefined;
+  return source.startsWith("/") || source.startsWith("!") ? undefined : source;
 }
 
 /** 构造只要求短标题的后台模型提示 */
@@ -121,7 +135,11 @@ export async function generateTitle(
         ...(reasoning ? { reasoning } : {}),
       },
     );
-    if (message.stopReason === "error" || message.stopReason === "aborted") {
+    if (message.stopReason === "error") {
+      return { lengthLimitExceeded: false, error: message.errorMessage ?? "the model request failed" };
+    }
+    // 主动中止（切换或关闭 session）属于预期行为，保持安静
+    if (message.stopReason === "aborted") {
       return { lengthLimitExceeded: false };
     }
 

@@ -1,9 +1,9 @@
 import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext, InputEvent } from "@earendil-works/pi-coding-agent";
-import { isEligibleInput, type TitleGenerationResult } from "./title.ts";
+import { extractUserPrompt, isUserOriginatedInput, type TitleGenerationResult } from "./title.ts";
 
 export interface RenameCandidate {
-  /** 首个普通用户提示 */
+  /** 首个用户提示中由用户自己书写的内容 */
   prompt: string;
 }
 
@@ -12,7 +12,7 @@ export interface SessionRenameControllerOptions {
   getSessionName: () => string | undefined;
   /** 写入自动生成的 session 名称 */
   setSessionName: (name: string) => void;
-  /** 输出无法满足长度限制的英文警告 */
+  /** 输出英文警告 */
   warn: (message: string) => void;
   /** 在独立请求中生成 session 名称 */
   generateTitle: (
@@ -23,45 +23,57 @@ export interface SessionRenameControllerOptions {
   ) => Promise<TitleGenerationResult>;
 }
 
-/** 管理首次 turn 候选、失败恢复和后台重命名竞态 */
+/**
+ * 管理首个用户提示的捕获、后台命名以及失败恢复
+ * 候选项在 before_agent_start 阶段读取，那里才能拿到 skill 与 prompt template 展开后的文本
+ */
 export function createSessionRenameController(options: SessionRenameControllerOptions) {
   let candidate: RenameCandidate | undefined;
   let attempted = false;
   let turnFailed = false;
+  let userTurnPending = false;
   let sessionGeneration = 0;
   let activeAbortController: AbortController | undefined;
 
-  const onInput = (
-    event: Pick<InputEvent, "text" | "source" | "streamingBehavior">,
-    model?: Model<Api>,
-    modelRegistry?: ExtensionContext["modelRegistry"],
-  ): void => {
-    if (attempted || candidate || !isEligibleInput(event)) return;
-    candidate = { prompt: event.text.trim() };
-    if (model && modelRegistry) startRename(model, modelRegistry);
+  /** input：只记录本轮是否由用户发起，候选文本留给展开后的 before_agent_start 读取 */
+  const onInput = (event: Pick<InputEvent, "source" | "streamingBehavior">): void => {
+    if (attempted || candidate) return;
+    userTurnPending = isUserOriginatedInput(event);
   };
 
-  const onTurnEnd = (
+  /** before_agent_start：取展开后的首个用户提示并立即发起后台命名请求 */
+  const onBeforeAgentStart = (
+    prompt: string,
     model: Model<Api> | undefined,
-    modelRegistry: ExtensionContext["modelRegistry"],
-    message: Pick<AssistantMessage, "role" | "stopReason">,
+    modelRegistry: ExtensionContext["modelRegistry"] | undefined,
   ): void => {
-    if (!candidate || message.role !== "assistant") return;
+    const wasUserTurn = userTurnPending;
+    userTurnPending = false;
+    if (!wasUserTurn || attempted || candidate) return;
+
+    const userPrompt = extractUserPrompt(prompt);
+    if (!userPrompt) return;
+    if (!model || !modelRegistry) {
+      // 不设置候选，后续 turn 仍有机会命名
+      options.warn("Session title generation skipped because no model is available.");
+      return;
+    }
+
+    candidate = { prompt: userPrompt };
+    turnFailed = false;
+    startRename(model, modelRegistry);
+  };
+
+  /** turn_end：跟踪首个 turn 是否失败，失败的 turn 不应该留下名字 */
+  const onTurnEnd = (message: Pick<AssistantMessage, "role" | "stopReason">): void => {
+    if (message.role !== "assistant") return;
+    if (message.stopReason === "toolUse") return;
 
     if (message.stopReason === "error" || message.stopReason === "aborted" || message.stopReason === "deferred") {
       turnFailed = true;
       return;
     }
-
-    if (message.stopReason === "toolUse") return;
-    if (message.stopReason !== "stop" && message.stopReason !== "length") return;
-    if (!model) {
-      turnFailed = true;
-      options.warn("Session title generation skipped because no model is available.");
-      return;
-    }
-    turnFailed = false;
-    startRename(model, modelRegistry);
+    if (message.stopReason === "stop" || message.stopReason === "length") turnFailed = false;
   };
 
   const startRename = (model: Model<Api>, modelRegistry: ExtensionContext["modelRegistry"]): void => {
@@ -85,6 +97,8 @@ export function createSessionRenameController(options: SessionRenameControllerOp
           options.setSessionName(result.title);
         } else if (result.lengthLimitExceeded) {
           options.warn("Session title generation stopped after 3 retries because the title exceeded the length limit.");
+        } else if (result.error) {
+          options.warn(`Session title generation failed: ${result.error}`);
         }
       })
       .catch((error: unknown) => {
@@ -97,11 +111,19 @@ export function createSessionRenameController(options: SessionRenameControllerOp
       });
   };
 
+  /**
+   * agent_settled：递归重试结束后仍在失败的 turn，且请求尚未落地时丢弃候选
+   * 这样被中断的首个 turn 不会留下名字，后续用户提示还能重新触发命名
+   */
   const onAgentSettled = (): void => {
-    if (candidate && turnFailed && !attempted) {
-      candidate = undefined;
-      turnFailed = false;
-    }
+    if (!turnFailed) return;
+    turnFailed = false;
+    if (options.getSessionName() !== undefined) return;
+
+    activeAbortController?.abort();
+    activeAbortController = undefined;
+    attempted = false;
+    candidate = undefined;
   };
 
   const onSessionStart = (): void => {
@@ -111,6 +133,7 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     candidate = undefined;
     attempted = false;
     turnFailed = false;
+    userTurnPending = false;
   };
 
   const onSessionShutdown = (): void => {
@@ -119,7 +142,8 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     activeAbortController = undefined;
     candidate = undefined;
     turnFailed = false;
+    userTurnPending = false;
   };
 
-  return { onInput, onTurnEnd, onAgentSettled, onSessionStart, onSessionShutdown };
+  return { onInput, onBeforeAgentStart, onTurnEnd, onAgentSettled, onSessionStart, onSessionShutdown };
 }
