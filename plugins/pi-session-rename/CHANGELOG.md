@@ -1,5 +1,11 @@
 # @lystran/pi-session-rename
 
+## 0.2.3
+
+### Patch Changes
+
+- 35c35cd: Name a session from the user's own text after Pi expands `/skill:<name>` and prompt templates, and warn when the title provider returns an error instead of failing silently
+
 ## 0.2.2
 
 ### Patch Changes
