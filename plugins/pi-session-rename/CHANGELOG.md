@@ -8,7 +8,8 @@
 
 ## Unreleased
 
-- Start title generation in the background as soon as the first ordinary user input arrives, using the lowest reasoning level supported by the selected model
+- Read the first user prompt after Pi expands `/skill:<name>` and prompt templates, so skill-invoked sessions are named from the text the user wrote themselves
+- Warn when the title request fails at the provider level instead of leaving the session unnamed without feedback
 
 ## 0.2.1
 
