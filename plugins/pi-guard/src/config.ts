@@ -1,14 +1,67 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { GuardConfig, GuardRule } from "./types.ts";
+import type { GuardConfig, GuardNotifyConfig, GuardRule } from "./types.ts";
 
-const DEFAULT_CONFIG: Omit<GuardConfig, "rules"> = {
+const DEFAULT_CONFIG: Omit<GuardConfig, "rules" | "notify"> = {
   binary: "dcg",
   defaultMode: "confirm",
   headless: "deny",
   timeoutMs: 2_000,
 };
+
+/** 通知默认配置：只提示危险命令存在、轻微节流、系统通知失败时响铃 */
+export const DEFAULT_NOTIFY_CONFIG: GuardNotifyConfig = {
+  enabled: true,
+  includeCommand: false,
+  minIntervalMs: 1_500,
+  maxPerMinute: 5,
+  bell: true,
+};
+
+/** 校验 notify 段中的布尔字段 */
+function parseNotifyBoolean(value: unknown, name: string, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  if (typeof value !== "boolean") throw new Error(`Pi Guard notify.${name} must be a boolean`);
+  return value;
+}
+
+/** 校验 notify 段中的整数区间字段 */
+function parseNotifyInteger(value: unknown, name: string, fallback: number, min: number, max: number): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`Pi Guard notify.${name} must be an integer between ${min} and ${max}`);
+  }
+  return value;
+}
+
+/** 校验 notify 段，缺省字段沿用默认值 */
+function parseNotifyConfig(value: unknown): GuardNotifyConfig {
+  if (value === undefined) return { ...DEFAULT_NOTIFY_CONFIG };
+  if (typeof value !== "object" || value === null) throw new Error("Pi Guard notify must be a JSON object");
+  const record = value as Record<string, unknown>;
+  return {
+    enabled: parseNotifyBoolean(record.enabled, "enabled", DEFAULT_NOTIFY_CONFIG.enabled),
+    includeCommand: parseNotifyBoolean(record.includeCommand, "includeCommand", DEFAULT_NOTIFY_CONFIG.includeCommand),
+    minIntervalMs: parseNotifyInteger(
+      record.minIntervalMs,
+      "minIntervalMs",
+      DEFAULT_NOTIFY_CONFIG.minIntervalMs,
+      0,
+      60_000,
+    ),
+    maxPerMinute: parseNotifyInteger(record.maxPerMinute, "maxPerMinute", DEFAULT_NOTIFY_CONFIG.maxPerMinute, 1, 60),
+    bell: parseNotifyBoolean(record.bell, "bell", DEFAULT_NOTIFY_CONFIG.bell),
+  };
+}
+
+/** DCG_PI_NOTIFY 用于在命令行快速开关系统通知 */
+function applyNotifyEnv(env: NodeJS.ProcessEnv, notify: GuardNotifyConfig): GuardNotifyConfig {
+  const override = env.DCG_PI_NOTIFY;
+  if (override === undefined) return notify;
+  if (override !== "on" && override !== "off") throw new Error(`DCG_PI_NOTIFY is invalid: ${override}`);
+  return { ...notify, enabled: override === "on" };
+}
 
 /** 在没有任何配置时创建用户级默认配置 */
 export function ensureGuardConfig(
@@ -69,7 +122,7 @@ function parsePermissionMap(value: Record<string, unknown>): GuardRule[] {
 }
 
 /** 校验 JSON 配置 */
-function parseConfig(value: unknown): Pick<GuardConfig, "defaultMode" | "headless" | "rules"> {
+function parseConfig(value: unknown): Pick<GuardConfig, "defaultMode" | "headless" | "rules" | "notify"> {
   if (typeof value !== "object" || value === null) throw new Error("Pi Guard configuration must be a JSON object");
   const record = value as Record<string, unknown>;
   const defaultMode = record.defaultMode ?? DEFAULT_CONFIG.defaultMode;
@@ -91,7 +144,7 @@ function parseConfig(value: unknown): Pick<GuardConfig, "defaultMode" | "headles
         : (() => {
             throw new Error("Pi Guard rules or permission.bash must be an object or array");
           })();
-  return { defaultMode, headless, rules };
+  return { defaultMode, headless, rules, notify: parseNotifyConfig(record.notify) };
 }
 
 /** 从环境变量和项目或用户配置文件读取插件配置 */
@@ -99,10 +152,11 @@ export function loadGuardConfig(env: NodeJS.ProcessEnv = process.env, cwd = proc
   const configPath =
     env.PI_GUARD_CONFIG?.trim() ||
     [join(cwd, ".pi", "guard.json"), join(homedir(), ".pi", "agent", "guard.json")].find(existsSync);
-  let fileConfig: Pick<GuardConfig, "defaultMode" | "headless" | "rules"> = {
+  let fileConfig: Pick<GuardConfig, "defaultMode" | "headless" | "rules" | "notify"> = {
     defaultMode: DEFAULT_CONFIG.defaultMode,
     headless: DEFAULT_CONFIG.headless,
     rules: [],
+    notify: { ...DEFAULT_NOTIFY_CONFIG },
   };
   if (configPath) {
     try {
@@ -125,5 +179,6 @@ export function loadGuardConfig(env: NodeJS.ProcessEnv = process.env, cwd = proc
     headless,
     timeoutMs,
     rules: fileConfig.rules,
+    notify: applyNotifyEnv(env, fileConfig.notify),
   };
 }

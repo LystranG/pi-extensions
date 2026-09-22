@@ -30,6 +30,7 @@ Example configuration:
 {
   "defaultMode": "confirm",
   "headless": "deny",
+  "notify": { "includeCommand": false },
   "rules": [
     { "command": "rm -rf *", "mode": "deny" },
     { "command": "git clean -fd *", "mode": "deny" }
@@ -43,9 +44,40 @@ Rules only apply after dcg has classified a command as dangerous, except that a 
 
 You can also explicitly use `match: "exact"`, `"prefix"`, `"wildcard"`, or `"regex"`. When `match` is omitted, commands without `*` use exact matching and commands containing `*` use wildcard matching
 
-Optional environment variables: `DCG_BIN`, `DCG_PI_MODE`, `DCG_PI_HEADLESS`, `DCG_PI_TIMEOUT_MS`
+Optional environment variables: `DCG_BIN`, `DCG_PI_MODE`, `DCG_PI_HEADLESS`, `DCG_PI_TIMEOUT_MS`, `DCG_PI_NOTIFY` (`on` or `off`)
 
 Commands are denied when dcg is missing, times out, returns malformed output, or exits with an unrecognized code. Pi displays a notification for direct denials, configuration errors, and canceled confirmations; confirmation dialogs show the command, dcg reason, and matching configuration rule
+
+## Notifications
+
+The plugin sends an operating-system notification right before a confirmation dialog appears, so a session that keeps running in a background terminal can still reach you. Notifications are sent in interactive TUI sessions only; print, JSON, and RPC modes are skipped. A notification is a best-effort side effect and never changes a guard decision
+
+```json
+{
+  "notify": {
+    "enabled": true,
+    "includeCommand": false,
+    "minIntervalMs": 1500,
+    "maxPerMinute": 5,
+    "bell": true
+  }
+}
+```
+
+- `enabled` sends system notifications, `DCG_PI_NOTIFY=off` disables them for one run
+- `includeCommand` appends the truncated command text to the notification body, which keeps that command in the notification center, so it is off by default
+- `minIntervalMs` is the minimum delay between two notifications, and `maxPerMinute` caps a burst of confirmations
+- `bell` writes a single terminal bell when no system notification was delivered
+
+Notification commands are spawned as separate processes with an argument vector, never through a shell, and each failure falls back to the next candidate in the chain:
+
+| Platform | Candidates in order |
+| --- | --- |
+| macOS | `terminal-notifier`, `osascript`, `afplay` |
+| Linux | `notify-send`, `gdbus` |
+| Windows | terminal bell only |
+
+`terminal-notifier` is not installed by default, so macOS without it falls back to `osascript`, whose notifications are attributed to the Script Editor notification permission. On Linux, `notify-send` needs libnotify and a running notification server. Every candidate is killed after five seconds, and a platform without a working candidate ends with the terminal bell
 
 ## Boundaries
 

@@ -1,12 +1,14 @@
 import { type ExtensionAPI, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import { ensureGuardConfig, loadGuardConfig } from "./config.ts";
 import { createDcgChecker } from "./dcg.ts";
+import { createNotifier } from "./notify.ts";
 import { confirmStdinInput, decideCommand, summarizeCommand } from "./policy.ts";
 import { extractToolRequest } from "./tools.ts";
-import type { GuardConfig } from "./types.ts";
+import type { GuardConfig, GuardContext } from "./types.ts";
 
 export * from "./config.ts";
 export * from "./dcg.ts";
+export * from "./notify.ts";
 export * from "./policy.ts";
 export { decideCommand as decideToolCall } from "./policy.ts";
 export * from "./rules.ts";
@@ -28,13 +30,16 @@ export default function piGuardExtension(pi: ExtensionAPI): void {
     return;
   }
   const checker = createDcgChecker(config);
+  // 通知器在插件加载时创建一次，节流状态因此在整个会话内共享
+  const notifier = createNotifier({ config: config.notify });
   pi.on("tool_call", async (event, ctx) => {
     const request = extractToolRequest(event.toolName, event.input);
     if (request.kind === "ignore") return undefined;
+    const guardContext: GuardContext = { hasUI: ctx.hasUI, mode: ctx.mode, ui: ctx.ui, notifier };
     const decision =
       request.kind === "command"
-        ? await decideCommand(request.command, config, checker, ctx)
-        : await confirmStdinInput(request.input, config, ctx);
+        ? await decideCommand(request.command, config, checker, guardContext)
+        : await confirmStdinInput(request.input, config, guardContext);
     if (decision.deny) {
       ctx.ui.notify(
         `Blocked ${request.kind === "stdin" ? "PTY input" : "command"}: ${summarizeCommand(
