@@ -9,6 +9,14 @@ import {
 
 const MAX_SOURCE_LENGTH = 6000;
 const MAX_TITLE_RETRIES = 3;
+/**
+ * 标题请求的输出预算
+ * 部分模型的 thinkingLevelMap.off 为 null，provider 无法关闭思考，预算会被思考吃光
+ * 80 token 时模型只输出思考、不输出正文，标题请求会静默失败，因此必须留足思考开销
+ */
+const MAX_TITLE_TOKENS = 1024;
+/** 模型既没有给出可用标题也没有报错时的兜底说明，调用方据此向用户发出警告 */
+const NO_TITLE_ERROR = "the model returned no usable title";
 
 export interface TitleLength {
   hanCharacters: number;
@@ -106,7 +114,20 @@ export function buildRetryTitlePrompt(title: string): string {
   ].join("\n");
 }
 
-/** 使用当前模型独立生成 session 标题 */
+/** 取出回复里的正文，思考与工具调用不参与标题 */
+function extractAssistantText(message: AssistantMessage): string {
+  return message.content
+    .filter((part): part is Extract<AssistantMessage["content"][number], { type: "text" }> => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+    .trim();
+}
+
+/**
+ * 使用当前模型独立生成 session 标题
+ * 标题超长时改用更短的提示重试，正文缺失（例如预算被思考吃光而截断）时用原提示重试
+ * 两种失败一共最多请求 1 次初始 + 3 次重试，用尽后把失败原因交回调用方
+ */
 export async function generateTitle(
   model: Model<Api>,
   prompt: string,
@@ -131,7 +152,7 @@ export async function generateTitle(
       },
       {
         signal,
-        maxTokens: 80,
+        maxTokens: MAX_TITLE_TOKENS,
         ...(reasoning ? { reasoning } : {}),
       },
     );
@@ -143,17 +164,12 @@ export async function generateTitle(
       return { lengthLimitExceeded: false };
     }
 
-    const title = normalizeTitle(
-      message.content
-        .filter((part): part is Extract<AssistantMessage["content"][number], { type: "text" }> => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-        .trim(),
-    );
+    const title = normalizeTitle(extractAssistantText(message));
     if (title && isTitleWithinLimit(title)) return { title, lengthLimitExceeded: false };
-    if (!title) return { lengthLimitExceeded: false };
-    if (attempt === MAX_TITLE_RETRIES) return { lengthLimitExceeded: true };
-    content = buildRetryTitlePrompt(title);
+    if (attempt === MAX_TITLE_RETRIES) {
+      return title ? { lengthLimitExceeded: true } : { lengthLimitExceeded: false, error: NO_TITLE_ERROR };
+    }
+    content = title ? buildRetryTitlePrompt(title) : buildTitlePrompt(prompt);
   }
   return { lengthLimitExceeded: true };
 }
