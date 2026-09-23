@@ -50,7 +50,21 @@ Commands are denied when dcg is missing, times out, returns malformed output, or
 
 ## Notifications
 
-The plugin sends an operating-system notification right before a confirmation dialog appears, so a session that keeps running in a background terminal can still reach you. Notifications are sent in interactive TUI sessions only; print, JSON, and RPC modes are skipped. A notification is a best-effort side effect and never changes a guard decision
+The plugin delivers a notification right before a confirmation dialog appears, so a session that keeps running in a background terminal can still reach you. Notifications are sent in interactive TUI sessions on an interactive terminal only; print, JSON, and RPC modes are skipped, and a redirected stdout receives no terminal escape sequences. A notification is a best-effort side effect and never changes a guard decision
+
+Delivery stops at the first layer that applies:
+
+| Order | Layer | Applies when |
+| --- | --- | --- |
+| 1 | Terminal notification (`OSC 99` on kitty, `OSC 777` on the others) | The terminal is known to render it |
+| 2 | System notification chain | Layer 1 does not apply |
+| 3 | Terminal bell | Every candidate in layer 2 failed and `bell` is enabled |
+
+A layer 1 hit skips the system notification chain, so one confirmation never raises two notifications. The price is that a terminal escape sequence reports no failure, so the terminal list is a positive allowlist and anything unrecognised falls through to layer 2:
+
+- Renders `OSC 99` or `OSC 777`: kitty, Ghostty, WezTerm, iTerm2, Warp, rxvt-unicode
+- Excluded: tmux and GNU screen drop these sequences instead of passing them through, Windows Terminal ships `OSC 777` disabled, and VS Code's xterm.js implements none of them; Apple Terminal and Alacritty are excluded for the same reason, and `TERM=dumb` declares no terminal capability at all
+- tmux is excluded by `TMUX` and screen by `STY`, not by `TERM_PROGRAM`: tmux rewrites `TERM_PROGRAM` but leaves other terminal variables such as `KITTY_WINDOW_ID` in place, so only the multiplexer variables themselves are reliable
 
 ```json
 {
@@ -64,10 +78,10 @@ The plugin sends an operating-system notification right before a confirmation di
 }
 ```
 
-- `enabled` sends system notifications, `DCG_PI_NOTIFY=off` disables them for one run
-- `includeCommand` appends the truncated command text to the notification body, which keeps that command in the notification center, so it is off by default
-- `minIntervalMs` is the minimum delay between two notifications, and `maxPerMinute` caps a burst of confirmations
-- `bell` writes a single terminal bell when no system notification was delivered
+- `enabled` sends notifications, `DCG_PI_NOTIFY=off` disables them for one run
+- `includeCommand` appends the truncated command text to the notification body, which keeps that command in the notification center, so it is off by default. Notification text is stripped of control characters and semicolons before it reaches a terminal escape sequence, so command text cannot end that sequence early or inject another one
+- `minIntervalMs` is the minimum delay between two notifications, and `maxPerMinute` caps a burst of confirmations; both apply to every layer
+- `bell` writes a single terminal bell when no system notification was delivered on an interactive terminal
 
 Notification commands are spawned as separate processes with an argument vector, never through a shell, and each failure falls back to the next candidate in the chain:
 
