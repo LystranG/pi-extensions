@@ -1,6 +1,6 @@
 {
   "name": "@lystran/pi-session-rename",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Automatically name a Pi session after its first ordinary user input",
   "repository": {
     "type": "git",
