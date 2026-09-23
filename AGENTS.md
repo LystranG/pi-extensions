@@ -20,7 +20,7 @@
 ## 测试与发布
 
 - 只测试关键行为、边界和回归风险，不访问真实网络或模型
-- 使用 `bun changeset` 管理发布改动
+- 发布改动只写 changeset（`bun changeset`）：`CHANGELOG.md` 与包版本号由 `.github/workflows/release.yml` 的 `changesets/action` 在 push 到 `main` 时执行 `bun run version-packages` 自动生成
 - 发布前从 npm tarball 执行真实 `pi install` 冒烟验证
 
 ## 调研

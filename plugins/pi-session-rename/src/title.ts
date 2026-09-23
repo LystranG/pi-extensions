@@ -1,14 +1,15 @@
-import {
-  type Api,
-  type AssistantMessage,
-  type Context,
-  getSupportedThinkingLevels,
-  type Model,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
 
 const MAX_SOURCE_LENGTH = 6000;
 const MAX_TITLE_RETRIES = 3;
+/**
+ * 标题请求的输出预算
+ * 部分模型的 thinkingLevelMap.off 为 null，provider 无法关闭思考，预算会被思考吃光
+ * 80 token 时模型只输出思考、不输出正文，标题请求会静默失败，因此必须留足思考开销
+ */
+const MAX_TITLE_TOKENS = 1024;
+/** 模型既没有给出可用标题也没有报错时的兜底说明，调用方据此向用户发出警告 */
+const NO_TITLE_ERROR = "the model returned no usable title";
 
 export interface TitleLength {
   hanCharacters: number;
@@ -20,11 +21,6 @@ export interface TitleGenerationResult {
   lengthLimitExceeded: boolean;
   /** provider 报错时的错误信息，供调用方向用户发出警告 */
   error?: string;
-}
-
-/** 读取模型支持的最低 reasoning 等级，不支持 reasoning 时省略请求参数 */
-export function getTitleThinkingLevel(model: Model<Api>): ThinkingLevel | undefined {
-  return getSupportedThinkingLevels(model).find((level): level is ThinkingLevel => level !== "off");
 }
 
 /** Pi 展开 `/skill:<name>` 时注入的技能说明块，位于用户自己写的内容之前 */
@@ -48,6 +44,18 @@ export function extractUserPrompt(prompt: string): string | undefined {
   const source = withoutSkillBlocks.length > 0 ? withoutSkillBlocks : prompt.trim();
   if (source.length === 0) return undefined;
   return source.startsWith("/") || source.startsWith("!") ? undefined : source;
+}
+
+/**
+ * 从命令展开前的原始输入里取回用户自己写的内容，即 `/命令 参数` 里的参数部分
+ * 提示模板会把模板正文替换进 prompt，只有原始输入还留着用户写的参数
+ */
+export function extractCommandArguments(text: string | undefined): string | undefined {
+  const trimmed = text?.trim() ?? "";
+  if (!trimmed.startsWith("/")) return undefined;
+  const [, ...args] = trimmed.split(/\s+/u);
+  const ownText = args.join(" ").trim();
+  return ownText.length > 0 ? ownText : undefined;
 }
 
 /** 构造只要求短标题的后台模型提示 */
@@ -106,7 +114,20 @@ export function buildRetryTitlePrompt(title: string): string {
   ].join("\n");
 }
 
-/** 使用当前模型独立生成 session 标题 */
+/** 取出回复里的正文，思考与工具调用不参与标题 */
+function extractAssistantText(message: AssistantMessage): string {
+  return message.content
+    .filter((part): part is Extract<AssistantMessage["content"][number], { type: "text" }> => part.type === "text")
+    .map((part) => part.text)
+    .join("")
+    .trim();
+}
+
+/**
+ * 使用当前模型独立生成 session 标题
+ * 标题超长时改用更短的提示重试，正文缺失（例如预算被思考吃光而截断）时用原提示重试
+ * 两种失败一共最多请求 1 次初始 + 3 次重试，用尽后把失败原因交回调用方
+ */
 export async function generateTitle(
   model: Model<Api>,
   prompt: string,
@@ -117,12 +138,10 @@ export async function generateTitle(
     options: {
       signal: AbortSignal;
       maxTokens: number;
-      reasoning?: ThinkingLevel;
     },
   ) => Promise<AssistantMessage>,
 ): Promise<TitleGenerationResult> {
   let content = buildTitlePrompt(prompt);
-  const reasoning = getTitleThinkingLevel(model);
   for (let attempt = 0; attempt <= MAX_TITLE_RETRIES; attempt++) {
     const message = await complete(
       model,
@@ -131,8 +150,7 @@ export async function generateTitle(
       },
       {
         signal,
-        maxTokens: 80,
-        ...(reasoning ? { reasoning } : {}),
+        maxTokens: MAX_TITLE_TOKENS,
       },
     );
     if (message.stopReason === "error") {
@@ -143,17 +161,12 @@ export async function generateTitle(
       return { lengthLimitExceeded: false };
     }
 
-    const title = normalizeTitle(
-      message.content
-        .filter((part): part is Extract<AssistantMessage["content"][number], { type: "text" }> => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-        .trim(),
-    );
+    const title = normalizeTitle(extractAssistantText(message));
     if (title && isTitleWithinLimit(title)) return { title, lengthLimitExceeded: false };
-    if (!title) return { lengthLimitExceeded: false };
-    if (attempt === MAX_TITLE_RETRIES) return { lengthLimitExceeded: true };
-    content = buildRetryTitlePrompt(title);
+    if (attempt === MAX_TITLE_RETRIES) {
+      return title ? { lengthLimitExceeded: true } : { lengthLimitExceeded: false, error: NO_TITLE_ERROR };
+    }
+    content = title ? buildRetryTitlePrompt(title) : buildTitlePrompt(prompt);
   }
   return { lengthLimitExceeded: true };
 }
