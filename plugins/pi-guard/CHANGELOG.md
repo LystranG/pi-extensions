@@ -1,5 +1,11 @@
 # @lystran/pi-guard
 
+## 0.4.0
+
+### Minor Changes
+
+- 5b26b08: Send a terminal notification right before a confirmation dialog appears, using `OSC 99` on kitty and `OSC 777` on the other terminals that render it, with tmux and GNU screen excluded, and the terminal bell now written only on an interactive terminal
+
 ## 0.3.0
 
 ### Minor Changes
