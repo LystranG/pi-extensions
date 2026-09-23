@@ -1,5 +1,11 @@
 # @lystran/pi-guard
 
+## 0.3.0
+
+### Minor Changes
+
+- 3b89511: Send a system notification right before a confirmation dialog appears, with macOS and Linux fallback chains, throttling, an optional command summary, and a terminal bell when no notification tool can deliver
+
 ## 0.2.0
 
 ### Minor Changes
