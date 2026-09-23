@@ -74,7 +74,7 @@ This is the recommended MCP companion plugin for exposing Serena's symbolic tool
 The plugin is compatible with the JSON hook protocol exposed by Serena's `--client claude-code` option. It sends `session_id`, `tool_name`, and `tool_input` through stdin, then handles Serena's `hookSpecificOutput` response:
 
 - `additionalContext` is forwarded to the Pi agent
-- `permissionDecision: "deny"` blocks the current matching tool call
+- `permissionDecision: "deny"` blocks the current matching tool call, and its `permissionDecisionReason` together with `additionalContext` becomes the blocked tool result the model reads
 - command failures, timeouts, and malformed output do not block Pi
 
 Using the `claude-code` format does not require Claude Code and does not launch Claude Code. It only selects Serena's compatible hook input and output schema for this Pi adapter.
@@ -84,10 +84,11 @@ Using the `claude-code` format does not require Claude Code and does not launch 
 | Pi event | Command |
 | --- | --- |
 | Any `session_start` | `serena-hooks activate --client claude-code` |
-| A user message sent after resuming at the session's first user message | `serena-hooks activate --client claude-code` again |
-| A user message sent after navigating the session tree to its root user message | `serena-hooks activate --client claude-code` again |
+| A `session_tree` navigation that rewinds the branch to before the first user message | `serena-hooks activate --client claude-code` again |
 | Before a model code-search call | `serena-hooks remind --client claude-code` |
-| `session_shutdown` with reason `quit` | `serena-hooks cleanup --client claude-code` |
+| `session_shutdown` with reason `quit`, `new`, `resume`, or `fork` | `serena-hooks cleanup --client claude-code` |
+
+`activate` context is queued with `deliverAs: "nextTurn"`, so it is injected into the same turn as the next user message rather than one turn later. Rewinding is detected by inspecting the branch after navigation: navigating to a user message moves the leaf to that message's parent, so a branch without any user message means the branch now starts before the first user message. A navigation that leaves the leaf unchanged, and any further navigation before the next user message, does not re-inject the context. `session_shutdown` with reason `reload` keeps the same session and therefore skips cleanup.
 
 `remind` watches model-initiated `grep`, `ffgrep`, `multi_grep`, and `fff-multi-grep` tools, plus Bash calls whose command starts with `grep`, `rg`, `fgrep`, `egrep`, `ag`, or `ack`. These calls are normalized to Serena's `grep` semantics, supporting Pi's native search tools and FFF's `tools-and-ui`, `tools-only`, and `override` modes. Ordinary Bash, skill reads, source reads, and documentation reads do not trigger the reminder. `find` and `fffind` search paths and do not trigger `remind`. Each command waits for at most 10 seconds. Missing commands, timeouts, and non-zero exits do not block Pi; each action produces at most one warning per session, while later events continue to attempt the command.
 
