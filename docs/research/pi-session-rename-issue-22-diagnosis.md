@@ -1,6 +1,6 @@
 # pi-session-rename issue #22 诊断报告
 
-> 状态：**已复现；A/B/C 已实现（见 §8 开头的实现状态），D 待决定**。§1–§7 是定位与证据，§8 是设计
+> 状态：**已复现；A/B/C/D 已全部实现（见 §8 开头的实现状态）**。§1–§7 是定位与证据，§8 是设计
 > 对象：`plugins/pi-session-rename`（仓库 `0.2.2` / 已安装 `0.2.3`）
 > 关联：LystranG/pi-extensions#22
 > 诊断手段：源码追踪 + 本机 mock provider 抓包（不使用真实网络），实验产物在 `/tmp/pi-rename-diag/`
@@ -75,7 +75,7 @@ src/index.ts:14-15   modelRegistry.complete(requestModel, context, options)
 
 ### 4.1 纠正：`reasoning` 选项根本没有生效
 
-`src/title.ts:125,132-136` 把 `getTitleThinkingLevel()` 的结果作为 `reasoning` 放进请求选项：
+修复前 `src/title.ts:125,132-136` 把 `getTitleThinkingLevel()` 的结果作为 `reasoning` 放进请求选项（本节行号对应修复前的版本，相关代码已由 D 删除）：
 
 ```ts
 const reasoning = getTitleThinkingLevel(model);
@@ -218,11 +218,9 @@ const onAgentSettled = (): void => {
 | 「考虑把无文本结果改成重试/告警」 | ✅ 采纳 |
 | —— | ❌ issue 未覆盖：恢复会话会再次命名、尝试次数无上限 |
 
-## 8. 修复设计（A/B/C 已实现）
+## 8. 修复设计（A/B/C/D 已实现）
 
-> 实现状态：A、B、C 已实现并合入，D 未实现。实现中确认两点偏差：
-> (1) 无可用模型的 turn 不会真正发出请求，因此不消耗命名机会（保留既有行为，已在 README 写明）；
-> (2) `getTitleThinkingLevel()` / `reasoning` 死代码按 D 未实现而保留。
+> 实现状态：A、B、C、D 已全部实现并合入。实现中确认一点偏差：无可用模型的 turn 不会真正发出请求，因此不消耗命名机会（保留既有行为，已在 README 写明）。
 
 ### A. opencode 路由头
 
@@ -251,10 +249,12 @@ const onAgentSettled = (): void => {
 | --- | --- |
 | 线上行为 | **无变化** —— 该值本来就没有离开进程（抓包已证） |
 | 测试 | `test/index.test.ts:151-156`、`:158-175` 两个用例必须删除；`:115` 对 `options.reasoning` 的断言需要调整 |
-| 包 API | `src/index.ts:37` 有 `export * from "./title.ts"`，`getTitleThinkingLevel` 是 npm 包可见的导出，删除属于破坏性变更，changeset 需按 `minor` 处理 |
+| 包 API | `src/index.ts:37` 有 `export * from "./title.ts"`，`getTitleThinkingLevel` 是 npm 包可见的导出，删除属于破坏性变更，changeset 已按 `minor` 记录 |
 | 文档 | README「uses the lowest reasoning level that model supports」的表述必须改写 |
 
 备选方案（不删，只停止传参）保留了导出与测试，但会留下一个"看着有用、实际被忽略"的函数 —— 这正是让 issue 作者和早期诊断走偏的原因，建议删除。
+
+**已实现**：`getTitleThinkingLevel()`、`reasoning` 选项与对应的两个单测已删除，changeset 记为 `minor`（删除包导出属破坏性变更）。
 
 ## 9. 回归风险与待验证项
 

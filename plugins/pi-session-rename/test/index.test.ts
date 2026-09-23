@@ -8,7 +8,6 @@ import {
   countTitleLength,
   extractUserPrompt,
   generateTitle,
-  getTitleThinkingLevel,
   isTitleWithinLimit,
   isUserOriginatedInput,
   normalizeTitle,
@@ -132,8 +131,7 @@ describe("title helpers", () => {
       {} as never,
       "Explain login",
       new AbortController().signal,
-      async (_model, context, options) => {
-        expect(options.reasoning).toBeUndefined();
+      async (_model, context, _options) => {
         prompts.push(context.messages[0]?.content as string);
         return {
           role: "assistant",
@@ -217,32 +215,6 @@ describe("title helpers", () => {
     });
 
     expect(result).toEqual({ lengthLimitExceeded: false });
-  });
-
-  test("selects the lowest reasoning level supported by the model", () => {
-    expect(getTitleThinkingLevel({ reasoning: true, thinkingLevelMap: { minimal: null, low: "low" } } as never)).toBe(
-      "low",
-    );
-    expect(getTitleThinkingLevel({ reasoning: false } as never)).toBeUndefined();
-  });
-
-  test("passes the selected reasoning level to the title request", async () => {
-    let reasoning: string | undefined;
-    await generateTitle(
-      { reasoning: true, thinkingLevelMap: { minimal: null, low: "low" } } as never,
-      "Explain login",
-      new AbortController().signal,
-      async (_model, _context, options) => {
-        reasoning = options.reasoning;
-        return {
-          role: "assistant",
-          content: [{ type: "text", text: "Login fix" }],
-          stopReason: "stop",
-        } as never;
-      },
-    );
-
-    expect(reasoning).toBe("low");
   });
 });
 

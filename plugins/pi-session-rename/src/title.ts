@@ -1,11 +1,4 @@
-import {
-  type Api,
-  type AssistantMessage,
-  type Context,
-  getSupportedThinkingLevels,
-  type Model,
-  type ThinkingLevel,
-} from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
 
 const MAX_SOURCE_LENGTH = 6000;
 const MAX_TITLE_RETRIES = 3;
@@ -28,11 +21,6 @@ export interface TitleGenerationResult {
   lengthLimitExceeded: boolean;
   /** provider 报错时的错误信息，供调用方向用户发出警告 */
   error?: string;
-}
-
-/** 读取模型支持的最低 reasoning 等级，不支持 reasoning 时省略请求参数 */
-export function getTitleThinkingLevel(model: Model<Api>): ThinkingLevel | undefined {
-  return getSupportedThinkingLevels(model).find((level): level is ThinkingLevel => level !== "off");
 }
 
 /** Pi 展开 `/skill:<name>` 时注入的技能说明块，位于用户自己写的内容之前 */
@@ -138,12 +126,10 @@ export async function generateTitle(
     options: {
       signal: AbortSignal;
       maxTokens: number;
-      reasoning?: ThinkingLevel;
     },
   ) => Promise<AssistantMessage>,
 ): Promise<TitleGenerationResult> {
   let content = buildTitlePrompt(prompt);
-  const reasoning = getTitleThinkingLevel(model);
   for (let attempt = 0; attempt <= MAX_TITLE_RETRIES; attempt++) {
     const message = await complete(
       model,
@@ -153,7 +139,6 @@ export async function generateTitle(
       {
         signal,
         maxTokens: MAX_TITLE_TOKENS,
-        ...(reasoning ? { reasoning } : {}),
       },
     );
     if (message.stopReason === "error") {
