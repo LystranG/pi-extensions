@@ -112,6 +112,87 @@ function planLinuxNotifyCommands({ title, body }: NotifyRequest): NotifyCommand[
   ];
 }
 
+/** 终端身份探测所需的最小环境变量视图 */
+export type TerminalEnv = Record<string, string | undefined>;
+
+/** 终端 OSC 通知的目标类型：kitty 只认 OSC 99，其余支持的终端用 OSC 777 */
+export type TerminalNotifyTarget = "kitty" | "osc777";
+
+/**
+ * 判断终端是否必须排除在 OSC 通知之外
+ * tmux 与 screen 一定在这里命中：裸 OSC 会被它们直接丢弃（不是透传），而 tmux 3.3 起覆写
+ * TERM_PROGRAM 却不清楚洗 KITTY_WINDOW_ID / ITERM_SESSION_ID，只看 TERM_PROGRAM 会误判成外层终端
+ * 所以这两个多路复用器只能按 TMUX / STY 本身判断，TERM 前缀判断只是额外的防线
+ */
+function isTerminalNotifyUnsupported(env: TerminalEnv): boolean {
+  const term = env.TERM ?? "";
+  return Boolean(
+    env.TMUX ||
+      env.STY ||
+      // Windows Terminal 的 OSC 777 默认关闭，且聚焦时会被抑制
+      env.WT_SESSION ||
+      env.TERM_PROGRAM === "tmux" ||
+      // VS Code 的 xterm.js 官方序列表里没有 OSC 9 / 99 / 777
+      env.TERM_PROGRAM === "vscode" ||
+      env.TERM_PROGRAM === "Apple_Terminal" ||
+      term.startsWith("screen") ||
+      term.includes("tmux") ||
+      term.includes("alacritty") ||
+      term === "dumb",
+  );
+}
+
+/**
+ * 探测当前终端能否渲染 OSC 通知，命中返回目标类型
+ * 白名单之外一律返回 undefined，交由系统通知链兜底；宁可漏判也不误判
+ */
+export function detectTerminalNotifyTarget(env: TerminalEnv): TerminalNotifyTarget | undefined {
+  if (isTerminalNotifyUnsupported(env)) return undefined;
+  const term = env.TERM ?? "";
+  if (env.KITTY_WINDOW_ID || env.TERM_PROGRAM === "kitty" || term.includes("kitty")) {
+    return "kitty";
+  }
+  const rendersOsc777 =
+    Boolean(env.GHOSTTY_RESOURCES_DIR) ||
+    env.TERM_PROGRAM === "ghostty" ||
+    env.TERM_PROGRAM === "WezTerm" ||
+    env.TERM_PROGRAM === "iTerm.app" ||
+    Boolean(env.ITERM_SESSION_ID) ||
+    env.TERM_PROGRAM === "WarpTerminal" ||
+    // OSC 777 出自 rxvt-unicode；裸 rxvt 也以 rxvt 开头的 TERM 不代表它支持这个扩展
+    term.startsWith("rxvt-unicode");
+  return rendersOsc777 ? "osc777" : undefined;
+}
+
+/** kitty 的 OSC 99 通知标识，合法字符集是 a-z A-Z 0-9 _ - + . */
+const KITTY_NOTIFY_ID = "pi-guard";
+/** OSC 99 的字符串终止符 */
+const OSC_ST = "\x1b\\";
+/** OSC 777 的字符串终止符 */
+const OSC_BEL = "\x07";
+
+/**
+ * 把通知文本压成不会破坏转义序列的载荷
+ * 覆盖三类字符：C0 控制字符（含 ESC 与 BEL，能提前终结序列）、DEL、C1 控制字符
+ * 另外把分号换成逗号，因为 OSC 777 用分号分隔字段
+ * 无论 includeCommand 是否为 true 都会执行，代码里不存在「看起来安全就跳过」的分支
+ */
+function sanitizeTerminalNotifyText(text: string): string {
+  // \p{Cc} 即 Unicode 的 Control 类：C0（含 ESC 与 BEL）+ DEL + C1，与 kitty 的 escape code safe UTF-8 定义一致
+  return text.replace(/\p{Cc}/gu, " ").replaceAll(";", ",");
+}
+
+/** 构造一条终端 OSC 通知序列，标题与正文里的控制字符会先被清理 */
+export function buildTerminalNotifySequence(target: TerminalNotifyTarget, { title, body }: NotifyRequest): string {
+  const safeTitle = sanitizeTerminalNotifyText(title);
+  const safeBody = sanitizeTerminalNotifyText(body);
+  if (target === "kitty") {
+    // 第一段 d=0 表示通知尚未发完，第二段省略 d 即表示已完成
+    return `\x1b]99;i=${KITTY_NOTIFY_ID}:d=0;${safeTitle}${OSC_ST}\x1b]99;i=${KITTY_NOTIFY_ID}:p=body;${safeBody}${OSC_ST}`;
+  }
+  return `\x1b]777;notify;${safeTitle};${safeBody}${OSC_BEL}`;
+}
+
 /** 单项通知命令的执行器，返回 true 表示该命令已成功送达 */
 export type CommandRunner = (command: NotifyCommand) => Promise<boolean>;
 
@@ -123,10 +204,16 @@ export interface NotifierOptions {
   platform?: NodeJS.Platform;
   /** 通知命令执行器，缺省用独立进程运行 */
   runCommand?: CommandRunner;
-  /** 系统通知全部失败时写终端响铃，缺省写一个 BEL 到标准输出 */
+  /** 系统通知全部失败且标准输出是交互式终端时写终端响铃，缺省写一个 BEL 到标准输出 */
   ringBell?: () => void;
   /** 时钟，缺省取系统时间 */
   now?: () => number;
+  /** 终端身份环境变量，缺省取当前进程环境 */
+  env?: TerminalEnv;
+  /** 标准输出是否是可写转义序列的交互式终端，缺省按 isTTY 判断 */
+  interactive?: boolean;
+  /** 写入终端转义序列，缺省直接写标准输出 */
+  writeSequence?: (sequence: string) => void;
 }
 
 /** 创建系统通知器，notify 不阻塞调用方，任何失败都静默降级 */
@@ -137,14 +224,26 @@ export function createNotifier(options: NotifierOptions): GuardNotifier {
     runCommand = runNotifyCommand,
     ringBell = ringBellOnStdout,
     now = Date.now,
+    env = process.env,
+    interactive = process.stdout.isTTY === true,
+    writeSequence = (sequence: string) => process.stdout.write(sequence),
   } = options;
   const allowAttempt = createThrottle(config, now);
   return {
     notify(request) {
       if (!config.enabled || !allowAttempt()) return;
+      if (interactive) {
+        const target = detectTerminalNotifyTarget(env);
+        if (target) {
+          // 终端自己就能显示通知时不再 spawn 系统通知进程，避免同一件事弹两次
+          // OSC 没有失败反馈，所以白名单必须保守：宁可漏判退回系统通知，也不能误判后静默失效
+          writeSequence(buildTerminalNotifySequence(target, request));
+          return;
+        }
+      }
       void sendNotifyCommands(planNotifyCommands(platform, request), runCommand)
         .then((delivered) => {
-          if (!delivered && config.bell) ringBell();
+          if (!delivered && config.bell && interactive) ringBell();
         })
         .catch(() => {
           // 通知与响铃都是尽力而为，既不能影响确认框，也不能变成未处理的 rejection
