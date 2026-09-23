@@ -1,6 +1,11 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext, InputEvent } from "@earendil-works/pi-coding-agent";
-import { extractUserPrompt, isUserOriginatedInput, type TitleGenerationResult } from "./title.ts";
+import {
+  extractCommandArguments,
+  extractUserPrompt,
+  isUserOriginatedInput,
+  type TitleGenerationResult,
+} from "./title.ts";
 
 export interface RenameCandidate {
   /** 首个用户提示中由用户自己书写的内容 */
@@ -42,11 +47,14 @@ export function createSessionRenameController(options: SessionRenameControllerOp
   let userTurnPending = false;
   let sessionGeneration = 0;
   let activeAbortController: AbortController | undefined;
+  /** 命令展开前用户输入的原始文本，用于取回用户自己写下的命令参数 */
+  let rawInputText: string | undefined;
 
-  /** input：只记录本轮 turn 是否由用户发起，候选文本留给展开后的 before_agent_start 读取 */
-  const onInput = (event: Pick<InputEvent, "source" | "streamingBehavior">): void => {
+  /** input：只记录本轮 turn 是否由用户发起，并留下命令展开前的原始文本 */
+  const onInput = (event: Pick<InputEvent, "source" | "streamingBehavior" | "text">): void => {
     if (renameConsumed || candidate) return;
     userTurnPending = isUserOriginatedInput(event);
+    rawInputText = userTurnPending ? event.text : undefined;
   };
 
   /** before_agent_start：取展开后的首个用户提示并立即发起后台命名请求 */
@@ -56,12 +64,20 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     modelRegistry: ExtensionContext["modelRegistry"] | undefined,
   ): void => {
     const wasUserTurn = userTurnPending;
+    const rawInput = rawInputText;
     userTurnPending = false;
+    rawInputText = undefined;
     if (!wasUserTurn || renameConsumed || candidate) return;
 
-    const userPrompt = extractUserPrompt(prompt);
+    // 提示模板与 skill 命令会被 Pi 展开后再交到这里，只有展开过的提示才回退到原始输入取参数；
+    // 原样透传的命令保持原有语义，不作为命名依据
+    const wasExpanded = rawInput !== undefined && prompt.trim() !== rawInput.trim();
+    const expandedPrompt = extractUserPrompt(prompt);
+    const commandArguments = wasExpanded ? extractCommandArguments(rawInput) : undefined;
+    const userPrompt = commandArguments ?? expandedPrompt;
     if (!userPrompt) return;
     if (!model || !modelRegistry) {
+      // 防御性分支：真实 Pi 在发出 before_agent_start 之前就会因缺少模型抛错，因此这里通常不会命中；
       // 不设置候选也不消耗机会，后续 turn 仍可命名
       options.warn("Session title generation skipped because no model is available.");
       return;
@@ -113,6 +129,7 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     activeAbortController = undefined;
     candidate = undefined;
     userTurnPending = false;
+    rawInputText = undefined;
     renameConsumed = existingUserMessages > 0;
   };
 
@@ -122,6 +139,7 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     activeAbortController = undefined;
     candidate = undefined;
     userTurnPending = false;
+    rawInputText = undefined;
   };
 
   return { onInput, onBeforeAgentStart, onSessionStart, onSessionShutdown };

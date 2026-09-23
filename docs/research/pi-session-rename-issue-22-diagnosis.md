@@ -256,6 +256,14 @@ const onAgentSettled = (): void => {
 
 **已实现**：`getTitleThinkingLevel()`、`reasoning` 选项与对应的两个单测已删除，changeset 记为 `minor`（删除包导出属破坏性变更）。
 
+### E. 提示模板首条消息的标题来源（评审发现，已实现）
+
+D 之后的独立评审发现：`/template args` 会被 Pi 在 `before_agent_start` 之前展开成模板正文（`agent-session.js:1238-1240` 的 `expandPromptTemplate`），而插件只剥离 `<skill>` 块，因此首条消息是提示模板时标题取自模板正文而非用户自己写下的参数，README 却声称相反。
+
+修法：`input` 事件在展开之前触发（`agent-session.js:1225`），因此保留它的 `text`，用新增的 `extractCommandArguments()` 取出 `/命令 参数` 里的参数部分，并优先于展开后的提示使用；命令没有参数时仍回退到展开后的正文。回退只在提示确实被展开时生效（`prompt` 与原始输入不同），因此 Pi 原样透传的未知命令仍按旧语义被忽略 —— 这一点由第二轮的独立评审指出，并补上了对应测试。
+
+实测（真实 `pi` + 本机 mock，模板正文不含 `$ARGUMENTS`）：会话里发给模型的用户消息是模板正文 `Review the code below and report every issue you can find.`，而标题来源是 `please check the auth flow`；对照组首条消息为未展开的未知命令时，完全不发标题请求。
+
 ## 9. 回归风险与待验证项
 
 - `maxTokens: 1024` 能否覆盖所有 `off === null` 的模型：issue 作者只在实网上验证了部分模型；**本报告无法在离线环境验证**，需要真实 `opencode-go` 请求确认。

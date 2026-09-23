@@ -23,7 +23,7 @@ const ADAPTERS: readonly ProviderHeaderAdapter[] = [
   },
 ];
 
-/** 判断请求头里是否已经有某个头，忽略大小写，避免下发重复头导致请求被拒 */
+/** 判断请求头里是否已经有某个头，忽略大小写：调用方自己提供的值优先，适配器只补缺失的头 */
 function hasHeader(headers: ProviderHeaders, name: string): boolean {
   const expected = name.toLowerCase();
   return Object.keys(headers).some((key) => key.toLowerCase() === expected);

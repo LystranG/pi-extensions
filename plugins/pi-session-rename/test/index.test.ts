@@ -6,6 +6,7 @@ import {
   buildRetryTitlePrompt,
   buildTitlePrompt,
   countTitleLength,
+  extractCommandArguments,
   extractUserPrompt,
   generateTitle,
   isTitleWithinLimit,
@@ -16,6 +17,9 @@ import {
 
 /** 等待后台 promise 落地 */
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** 构造一个由用户发起的 input 事件；text 只在首条消息是命令时才会被读取 */
+const userInput = (text = "user prompt") => ({ source: "interactive" as const, text });
 
 /** 构造带可变 session 名称与记录型警告的 controller 测试环境 */
 function createHarness(generateTitle: SessionRenameControllerOptions["generateTitle"], initialName?: string) {
@@ -66,6 +70,21 @@ describe("countUserMessages", () => {
 
   test("reports a session without entries as having no user messages", () => {
     expect(countUserMessages([])).toBe(0);
+  });
+});
+
+describe("extractCommandArguments", () => {
+  test("keeps the arguments the user passed to a command", () => {
+    expect(extractCommandArguments("/review please check the auth flow")).toBe("please check the auth flow");
+    expect(extractCommandArguments("/skill:diagnosing-bugs 你看看插件")).toBe("你看看插件");
+  });
+
+  test("reports nothing for a command without arguments or for ordinary input", () => {
+    expect(extractCommandArguments("/review")).toBeUndefined();
+    expect(extractCommandArguments("/review   ")).toBeUndefined();
+    expect(extractCommandArguments("fix the login flow")).toBeUndefined();
+    expect(extractCommandArguments("!git status")).toBeUndefined();
+    expect(extractCommandArguments(undefined)).toBeUndefined();
   });
 });
 
@@ -225,7 +244,7 @@ describe("session rename controller", () => {
       return { title: "Fix login flow", lengthLimitExceeded: false };
     });
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Fix login", {} as never, {} as never);
     await settle();
 
@@ -248,7 +267,7 @@ describe("session rename controller", () => {
       return { title: "Rename Plugin Broken", lengthLimitExceeded: false };
     });
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart(skillPrompt, {} as never, {} as never);
     await settle();
 
@@ -262,7 +281,7 @@ describe("session rename controller", () => {
       return { title: "Should not happen", lengthLimitExceeded: false };
     });
 
-    harness.controller.onInput({ source: "extension" });
+    harness.controller.onInput({ source: "extension", text: "Injected request" });
     harness.controller.onBeforeAgentStart("Injected request", {} as never, {} as never);
     await settle();
 
@@ -277,9 +296,9 @@ describe("session rename controller", () => {
       return { title: "Should not happen", lengthLimitExceeded: false };
     });
 
-    harness.controller.onInput({ source: "interactive", streamingBehavior: "steer" });
+    harness.controller.onInput({ source: "interactive", text: "Queued request", streamingBehavior: "steer" });
     harness.controller.onBeforeAgentStart("Queued request", {} as never, {} as never);
-    harness.controller.onInput({ source: "interactive", streamingBehavior: "followUp" });
+    harness.controller.onInput({ source: "interactive", text: "Queued follow-up", streamingBehavior: "followUp" });
     harness.controller.onBeforeAgentStart("Queued follow-up", {} as never, {} as never);
     await settle();
 
@@ -293,14 +312,59 @@ describe("session rename controller", () => {
       return { title: "First request", lengthLimitExceeded: false };
     });
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("First request", {} as never, {} as never);
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Second request", {} as never, {} as never);
     await settle();
 
     expect(calls).toBe(1);
     expect(harness.sessionName).toBe("First request");
+  });
+
+  test("names a template-invoked session from the user's own arguments", async () => {
+    const harness = createHarness(async (_model, _registry, candidate) => {
+      expect(candidate.prompt).toBe("please check the auth flow");
+      return { title: "Auth Flow Review", lengthLimitExceeded: false };
+    });
+
+    harness.controller.onInput(userInput("/review please check the auth flow"));
+    harness.controller.onBeforeAgentStart(
+      "Review the code below and report every issue.\n\nplease check the auth flow",
+      {} as never,
+      {} as never,
+    );
+    await settle();
+
+    expect(harness.sessionName).toBe("Auth Flow Review");
+  });
+
+  test("ignores a command that Pi passed through without expanding it", async () => {
+    let calls = 0;
+    const harness = createHarness(async () => {
+      calls++;
+      return { title: "Should not happen", lengthLimitExceeded: false };
+    });
+
+    harness.controller.onInput(userInput("/unknown-command foo"));
+    harness.controller.onBeforeAgentStart("/unknown-command foo", {} as never, {} as never);
+    await settle();
+
+    expect(calls).toBe(0);
+    expect(harness.sessionName).toBeUndefined();
+  });
+
+  test("falls back to the expanded prompt when the command has no arguments", async () => {
+    const harness = createHarness(async (_model, _registry, candidate) => {
+      expect(candidate.prompt).toBe("Review the code below and report every issue.");
+      return { title: "Code Review", lengthLimitExceeded: false };
+    });
+
+    harness.controller.onInput(userInput("/review"));
+    harness.controller.onBeforeAgentStart("Review the code below and report every issue.", {} as never, {} as never);
+    await settle();
+
+    expect(harness.sessionName).toBe("Code Review");
   });
 
   test("does not overwrite an existing session name", async () => {
@@ -310,7 +374,7 @@ describe("session rename controller", () => {
       return { title: "Should not happen", lengthLimitExceeded: false };
     }, "Existing name");
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Fix login", {} as never, {} as never);
     await settle();
 
@@ -321,9 +385,9 @@ describe("session rename controller", () => {
   test("warns when no model is available at turn start and still names a later turn", async () => {
     const harness = createHarness(async () => ({ title: "Retry after model setup", lengthLimitExceeded: false }));
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("No model request", undefined, {} as never);
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Completed request", {} as never, {} as never);
     await settle();
 
@@ -336,7 +400,7 @@ describe("session rename controller", () => {
       throw new Error("provider unavailable");
     });
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Provider failure", {} as never, {} as never);
     await settle();
 
@@ -347,7 +411,7 @@ describe("session rename controller", () => {
   test("warns when the provider returns an error result", async () => {
     const harness = createHarness(async () => ({ lengthLimitExceeded: false, error: "rate limited" }));
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Provider error", {} as never, {} as never);
     await settle();
 
@@ -357,7 +421,7 @@ describe("session rename controller", () => {
   test("warns in English after title length retries are exhausted", async () => {
     const harness = createHarness(async () => ({ lengthLimitExceeded: true }));
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Long title request", {} as never, {} as never);
     await settle();
 
@@ -373,7 +437,7 @@ describe("session rename controller", () => {
       return new Promise(() => undefined);
     });
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Long request", {} as never, {} as never);
     harness.controller.onSessionShutdown();
 
@@ -389,7 +453,7 @@ describe("session rename controller", () => {
         }),
     );
 
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Old session", {} as never, {} as never);
     harness.controller.onSessionShutdown();
     harness.controller.onSessionStart({ existingUserMessages: 0 });
@@ -407,7 +471,7 @@ describe("session rename controller", () => {
     });
 
     harness.controller.onSessionStart({ existingUserMessages: 1 });
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Resumed request", {} as never, {} as never);
     await settle();
 
@@ -422,7 +486,7 @@ describe("session rename controller", () => {
     });
 
     harness.controller.onSessionStart({ existingUserMessages: 0 });
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Fresh request", {} as never, {} as never);
     await settle();
 
@@ -437,10 +501,10 @@ describe("session rename controller", () => {
     });
 
     harness.controller.onSessionStart({ existingUserMessages: 0 });
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("First request", {} as never, {} as never);
     await settle();
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Second request", {} as never, {} as never);
     await settle();
 
@@ -458,9 +522,9 @@ describe("session rename controller", () => {
     );
 
     harness.controller.onSessionStart({ existingUserMessages: 0 });
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("First request", {} as never, {} as never);
-    harness.controller.onInput({ source: "interactive" });
+    harness.controller.onInput(userInput());
     harness.controller.onBeforeAgentStart("Second request", {} as never, {} as never);
     resolveTitle?.({ title: "First request title", lengthLimitExceeded: false });
     await settle();
@@ -556,6 +620,38 @@ describe("session rename extension", () => {
 
     expect(requests[0]?.transformHeaders).toBeUndefined();
     expect(harness.sessionName).toBe("Unrelated session");
+  });
+
+  test("names a template-invoked session from the user's own arguments", async () => {
+    const harness = createExtensionHarness();
+    const ctx = harness.createContext({
+      model: { provider: "openai", baseUrl: "https://api.openai.com/v1" },
+      modelRegistry: {
+        complete: async () => ({
+          role: "assistant",
+          content: [{ type: "text", text: "Auth Flow Review" }],
+          stopReason: "stop",
+        }),
+      },
+    });
+
+    await harness.emit("session_start", { type: "session_start", reason: "startup" }, ctx);
+    await harness.emit(
+      "input",
+      { type: "input", source: "interactive", text: "/review please check the auth flow" },
+      ctx,
+    );
+    await harness.emit(
+      "before_agent_start",
+      {
+        type: "before_agent_start",
+        prompt: "Review the code below and report every issue.\n\nplease check the auth flow",
+      },
+      ctx,
+    );
+    await settle();
+
+    expect(harness.sessionName).toBe("Auth Flow Review");
   });
 
   test("does not rename a session that was resumed with history", async () => {

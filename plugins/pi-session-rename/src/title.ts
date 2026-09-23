@@ -46,6 +46,18 @@ export function extractUserPrompt(prompt: string): string | undefined {
   return source.startsWith("/") || source.startsWith("!") ? undefined : source;
 }
 
+/**
+ * 从命令展开前的原始输入里取回用户自己写的内容，即 `/命令 参数` 里的参数部分
+ * 提示模板会把模板正文替换进 prompt，只有原始输入还留着用户写的参数
+ */
+export function extractCommandArguments(text: string | undefined): string | undefined {
+  const trimmed = text?.trim() ?? "";
+  if (!trimmed.startsWith("/")) return undefined;
+  const [, ...args] = trimmed.split(/\s+/u);
+  const ownText = args.join(" ").trim();
+  return ownText.length > 0 ? ownText : undefined;
+}
+
 /** 构造只要求短标题的后台模型提示 */
 export function buildTitlePrompt(prompt: string): string {
   const userPrompt = prompt.slice(0, MAX_SOURCE_LENGTH);
