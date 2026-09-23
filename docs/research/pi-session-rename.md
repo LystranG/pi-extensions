@@ -1,5 +1,11 @@
 # Pi Session Rename Research
 
+> **2026-09-23 更新**：本文 §Conclusion 中「让标题请求使用模型支持的最低 reasoning 等级」的假设已被证伪。
+> `ctx.modelRegistry.complete()` 走的是非 simple 路径，`reasoning` 选项会被 pi-ai 忽略，`getTitleThinkingLevel()` 是死代码；
+> 另外本文成稿时的 `@earendil-works/pi-ai@0.84.2` 并不具备 opencode 路由头逻辑。
+> 完整诊断（含 issue #22 的 4 个缺陷、跨版本抓包证据与修复设计）见
+> [pi-session-rename-issue-22-diagnosis.md](./pi-session-rename-issue-22-diagnosis.md)。
+
 ## Conclusion
 
 The public Pi extension API supports the requested behavior with a small state
