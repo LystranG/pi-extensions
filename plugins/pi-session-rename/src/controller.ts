@@ -107,7 +107,7 @@ export function createSessionRenameController(options: SessionRenameControllerOp
         if (result.title) {
           options.setSessionName(result.title);
         } else if (result.lengthLimitExceeded) {
-          options.warn("Session title generation stopped after 3 retries because the title exceeded the length limit.");
+          options.warn("Session title generation stopped because the title exceeded the length limit.");
         } else if (result.error) {
           options.warn(`Session title generation failed: ${result.error}`);
         }

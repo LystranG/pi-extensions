@@ -1,5 +1,9 @@
 # Pi Session Rename Research
 
+> **2026-09-24 更新**：本文 §Title Length Policy 里的「at most 10 Han characters and at most 5 non-Han words」已被
+> [ADR 0002](../adr/0002-session-title-policy.md) 取代为「20 汉字 / 10 非汉字词」，长度超限重试也从 3 次降为 1 次。
+> 提示词与校验口径的完整取舍见 [pi-session-rename-prompt.md](./pi-session-rename-prompt.md) 与 ADR 0002。
+
 > **2026-09-23 更新**：本文 §Conclusion 中「让标题请求使用模型支持的最低 reasoning 等级」的假设已被证伪。
 > `ctx.modelRegistry.complete()` 走的是非 simple 路径，`reasoning` 选项会被 pi-ai 忽略，`getTitleThinkingLevel()` 是死代码；
 > 另外本文成稿时的 `@earendil-works/pi-ai@0.84.2` 并不具备 opencode 路由头逻辑。

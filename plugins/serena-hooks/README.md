@@ -73,11 +73,23 @@ This is the recommended MCP companion plugin for exposing Serena's symbolic tool
 
 The plugin is compatible with the JSON hook protocol exposed by Serena's `--client claude-code` option. It sends `session_id`, `tool_name`, and `tool_input` through stdin, then handles Serena's `hookSpecificOutput` response:
 
-- `additionalContext` is forwarded to the Pi agent
+- `additionalContext` is forwarded to the Pi agent, after correcting Serena's stale session-start instruction to call `activate_project` (see [Session-start Activation Instruction](#session-start-activation-instruction))
 - `permissionDecision: "deny"` blocks the current matching tool call, and its `permissionDecisionReason` together with `additionalContext` becomes the blocked tool result the model reads
 - command failures, timeouts, and malformed output do not block Pi
 
 Using the `claude-code` format does not require Claude Code and does not launch Claude Code. It only selects Serena's compatible hook input and output schema for this Pi adapter.
+
+## Session-start Activation Instruction
+
+Serena's `serena-hooks activate` emits a session-start reminder that instructs the agent to call Serena's `activate_project` tool. That instruction is stale for the configuration this plugin documents.
+
+Serena removes `activate_project` from its tool list when the MCP server is started with a context that uses single-project mode **and** a project is supplied at startup — for example `--context=ide --project-from-cwd`, the configuration shown above. In that case the project is already active and project switching is not allowed, so the tool does not exist at all. An agent that follows the reminder calls a non-existent tool, and may then spend turns searching for it instead of doing the task.
+
+The plugin therefore rewrites only that clause into a conditional form:
+
+> 1. if Serena's `activate_project` tool is available, activate it unless already done.
+
+Everything else in the reminder is forwarded byte for byte. This keeps the reminder correct under both configurations: with auto-activation the clause is skipped, and without it the agent is still told to activate the project. If a future Serena release fixes the upstream wording, the pattern no longer matches and the text passes through unchanged.
 
 ## Lifecycle Mapping
 
