@@ -1,6 +1,7 @@
 // 将 Serena hook 控制器接入 Pi 的公开生命周期事件
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { adaptActivateContext } from "./activate-context.ts";
 import { createSerenaHookExecutor, runSerenaCommand } from "./command.ts";
 import { SerenaHooksController } from "./controller.ts";
 import { formatDenyReason, parseSerenaHookOutput } from "./output.ts";
@@ -29,12 +30,12 @@ export function createSerenaHooksExtension(execute: SerenaHookExecutor) {
   return (pi: ExtensionAPI): void => {
     const controller = new SerenaHooksController(execute);
 
-    // activate 返回的 additionalContext 排队到下一条用户消息，与用户输入在同一轮注入
+    // activate 返回的 additionalContext 先修正失效指令，再排队到下一条用户消息，与用户输入在同一轮注入
     const runActivate = async (result: SerenaHookResult | undefined) => {
       const output = parseSerenaHookOutput(result?.stdout);
       if (!output?.additionalContext) return;
       pi.sendMessage(
-        { customType: COMMAND, content: output.additionalContext, display: true },
+        { customType: COMMAND, content: adaptActivateContext(output.additionalContext), display: true },
         { deliverAs: "nextTurn" },
       );
     };

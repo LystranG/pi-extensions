@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  adaptActivateContext,
   createSerenaHookExecutor,
   createSerenaHooksExtension,
   formatDenyReason,
@@ -80,6 +81,14 @@ function activateResult(action: SerenaHookAction) {
     }),
   };
 }
+
+/** Serena 1.7.0 `serena-hooks activate` 注入的原始 SessionStart 文案，其中第 1 条指令引用了已被移除的 activate_project 工具 */
+const UPSTREAM_ACTIVATE_CONTEXT =
+  "**IMPORTANT**: If the current directory is a coding project you are working on: 1. activate it using Serena's activate_project tool unless already done.  2. if you haven't read Serena Instructions Manual yet, do so. Follow this instruction before doing anything else.";
+
+/** 改写后的文案：只把失效的第 1 条换成自适应措辞，其余部分逐字保留 */
+const ADAPTED_ACTIVATE_CONTEXT =
+  "**IMPORTANT**: If the current directory is a coding project you are working on: 1. if Serena's `activate_project` tool is available, activate it unless already done.  2. if you haven't read Serena Instructions Manual yet, do so. Follow this instruction before doing anything else.";
 
 describe("SerenaHooksController", () => {
   test("activates for every session start", async () => {
@@ -231,6 +240,18 @@ describe("serena hooks extension wiring", () => {
     ]);
   });
 
+  test("adapts Serena's stale activation instruction before injecting it", async () => {
+    const { handlers, sent } = harness(async () => ({
+      code: 0,
+      stdout: JSON.stringify({
+        hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: UPSTREAM_ACTIVATE_CONTEXT },
+      }),
+    }));
+    await handlers.get("session_start")?.({ reason: "new" } as never, context(branchEntries(false)) as never);
+
+    expect(sent[0]?.message.content).toBe(ADAPTED_ACTIVATE_CONTEXT);
+  });
+
   test("re-injects the activation context after the tree rewinds to before the first user message", async () => {
     const { handlers, sent } = harness(async (action) => activateResult(action));
     const ctx = context(branchEntries(false));
@@ -347,5 +368,26 @@ describe("serena hook output", () => {
 
   test("falls back to a default deny reason", () => {
     expect(formatDenyReason({})).toBe("Serena hook denied this tool call");
+  });
+});
+
+describe("activate context adaptation", () => {
+  test("makes the stale project activation instruction conditional", () => {
+    expect(adaptActivateContext(UPSTREAM_ACTIVATE_CONTEXT)).toBe(ADAPTED_ACTIVATE_CONTEXT);
+  });
+
+  test("passes upstream text through once the stale instruction is gone", () => {
+    // 上游修正文案后模式不再命中，不应做二次改写
+    const fixed = "**IMPORTANT**: Read Serena's Instructions Manual before doing anything else.";
+    expect(adaptActivateContext(fixed)).toBe(fixed);
+  });
+
+  test("leaves unrelated context text untouched", () => {
+    const reminder = "Consider using Serena's symbolic tools instead of read and grep.";
+    expect(adaptActivateContext(reminder)).toBe(reminder);
+  });
+
+  test("handles empty text", () => {
+    expect(adaptActivateContext("")).toBe("");
   });
 });
