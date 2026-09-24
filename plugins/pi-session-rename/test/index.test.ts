@@ -5,6 +5,7 @@ import { countUserMessages } from "../src/session-history.ts";
 import {
   buildRetryTitlePrompt,
   buildTitlePrompt,
+  buildTitleSystemPrompt,
   countTitleLength,
   extractCommandArguments,
   extractUserPrompt,
@@ -137,15 +138,48 @@ describe("title helpers", () => {
   test("enforces separate Chinese-character and non-Chinese-word limits", () => {
     expect(countTitleLength("修复 OAuth 登录流程")).toEqual({ hanCharacters: 6, words: 1 });
     expect(isTitleWithinLimit("修复 OAuth 登录流程")).toBe(true);
-    expect(isTitleWithinLimit("这是一个超过十个汉字的标题内容")).toBe(false);
-    expect(isTitleWithinLimit("One Two Three Four Five")).toBe(true);
-    expect(isTitleWithinLimit("One Two Three Four Five Six")).toBe(false);
-    expect(buildRetryTitlePrompt("One Two Three Four Five Six")).toContain("exceeded the session title length limit");
+    expect(isTitleWithinLimit("这是一个超过二十个汉字长度的会话标题内容示例")).toBe(false);
+    expect(isTitleWithinLimit("One Two Three Four Five Six")).toBe(true);
+    expect(isTitleWithinLimit("One Two Three Four Five Six Seven Eight Nine Ten Eleven")).toBe(false);
   });
 
-  test("retries an oversized model title at most three times", async () => {
+  test("keeps the title instructions out of the user message", () => {
+    // 回归：约束曾经与用户文本混在同一条 user 消息里，system 角色始终为空
+    expect(buildTitlePrompt("Fix login")).toBe("<user-prompt>\nFix login\n</user-prompt>");
+  });
+
+  test("pins language, specificity, and output shape in the system prompt", () => {
+    const systemPrompt = buildTitleSystemPrompt();
+    expect(systemPrompt).toContain("same language the user wrote in, not the language of these instructions");
+    expect(systemPrompt).toContain("Start with an imperative verb");
+    expect(systemPrompt).toContain("never replace it with a broader category");
+    expect(systemPrompt).toContain("do not state that you cannot name it");
+    expect(systemPrompt).toContain("must never exceed 20 Chinese characters or 10 non-Chinese words");
+    // 四条 few-shot 正例，中英各两条：两条英文锚定句式，两条中文锚定语言跟随与问候分支
+    expect(systemPrompt.match(/<user-prompt>[^<]+<\/user-prompt>/gu)).toHaveLength(4);
+    expect(systemPrompt).toContain("排查 serena-hooks 双击 esc 跳转失效");
+    expect(systemPrompt).toContain("打招呼");
+    expect(systemPrompt).toContain("Fix TS2345 in src/auth/session.ts");
+    expect(systemPrompt).toContain("Refactor config loader");
+  });
+
+  test("reports only the exceeded side of the limit on retry", () => {
+    const tooManyHan = buildRetryTitlePrompt("这是一个超过二十个汉字长度的会话标题内容示例", "Fix login");
+    expect(tooManyHan).toContain("exceeded the session title length limit");
+    expect(tooManyHan).toContain("the limit is 20.");
+    expect(tooManyHan).not.toContain("the limit is 10.");
+    // 重试的 user 消息只放数据，怎么改由 system 提示负责；重附首句让模型重新提取而不是只对过长标题做减法
+    expect(tooManyHan).not.toContain("Write a shorter replacement");
+    expect(tooManyHan).toContain("<user-prompt>\nFix login\n</user-prompt>");
+
+    const tooManyWords = buildRetryTitlePrompt("One Two Three Four Five Six Seven Eight Nine Ten Eleven", "Fix login");
+    expect(tooManyWords).toContain("the limit is 10.");
+    expect(tooManyWords).not.toContain("the limit is 20.");
+  });
+
+  test("retries an oversized model title at most once", async () => {
     const prompts: string[] = [];
-    const oversized = "One Two Three Four Five Six";
+    const oversized = "One Two Three Four Five Six Seven Eight Nine Ten Eleven";
     const result = await generateTitle(
       {} as never,
       "Explain login",
@@ -160,7 +194,7 @@ describe("title helpers", () => {
       },
     );
 
-    expect(prompts).toHaveLength(4);
+    expect(prompts).toHaveLength(2);
     expect(prompts[1]).toContain("exceeded the session title length limit");
     expect(result).toEqual({ lengthLimitExceeded: true });
   });
@@ -213,6 +247,24 @@ describe("title helpers", () => {
     );
 
     expect(maxTokens).toBe(1024);
+  });
+
+  test("sends the instructions as a system prompt and skips the prompt cache", async () => {
+    let systemPrompt: string | undefined;
+    let cacheRetention: string | undefined;
+    await generateTitle(
+      {} as never,
+      "Explain login",
+      new AbortController().signal,
+      async (_model, context, options) => {
+        systemPrompt = context.systemPrompt;
+        cacheRetention = options.cacheRetention;
+        return { role: "assistant", content: [{ type: "text", text: "Login fix" }], stopReason: "stop" } as never;
+      },
+    );
+
+    expect(systemPrompt).toContain("Start with an imperative verb");
+    expect(cacheRetention).toBe("none");
   });
 
   test("reports a provider error instead of silently returning no title", async () => {
@@ -425,9 +477,7 @@ describe("session rename controller", () => {
     harness.controller.onBeforeAgentStart("Long title request", {} as never, {} as never);
     await settle();
 
-    expect(harness.warnings).toEqual([
-      "Session title generation stopped after 3 retries because the title exceeded the length limit.",
-    ]);
+    expect(harness.warnings).toEqual(["Session title generation stopped because the title exceeded the length limit."]);
   });
 
   test("aborts the background request on session shutdown", () => {
