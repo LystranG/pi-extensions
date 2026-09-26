@@ -67,7 +67,7 @@ export interface GuardNotifyConfig {
   minIntervalMs: number;
   /** 每分钟最多发送的通知数量 */
   maxPerMinute: number;
-  /** 系统通知不可用或全部失败时是否写终端响铃 */
+  /** 是否写终端响铃：多路复用器里它是投递通道，其它情况下是系统通知全部失败后的兜底 */
   bell: boolean;
 }
 /** 可替换的系统通知器，实现方必须保证 notify 永不抛出异常 */

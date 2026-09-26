@@ -345,30 +345,6 @@ describe("terminal notification delivery", () => {
     expect(attempted).toEqual(["terminal-notifier"]);
   });
 
-  test("falls back to the system notification chain inside tmux", async () => {
-    // 回归：放进 tmux 的 KITTY_WINDOW_ID 会让白名单误命中，此时若跳过 spawn 链，
-    // 用户既收不到 OSC（被 tmux 丢弃）也收不到系统通知
-    const written: string[] = [];
-    const attempted: string[] = [];
-    const notifier = createNotifier({
-      config: notifyConfig,
-      env: { TMUX: "/private/tmp/tmux-501/default,32270,8", TERM_PROGRAM: "tmux", KITTY_WINDOW_ID: "1" },
-      interactive: true,
-      platform: "darwin",
-      writeSequence: (sequence) => written.push(sequence),
-      runCommand: async ({ bin }) => {
-        attempted.push(bin);
-        return true;
-      },
-    });
-
-    notifier.notify(request);
-    await drain();
-
-    expect(written).toEqual([]);
-    expect(attempted).toEqual(["terminal-notifier"]);
-  });
-
   test("writes no terminal sequence when stdout is not an interactive terminal", async () => {
     const written: string[] = [];
     const attempted: string[] = [];
@@ -435,6 +411,114 @@ describe("terminal notification delivery", () => {
 
     expect(written).toHaveLength(2);
     expect(attempted).toEqual([]);
+  });
+});
+
+describe("terminal multiplexer delivery", () => {
+  test("rings the terminal bell instead of spawning inside tmux", async () => {
+    // 回归：tmux 里 TERM_PROGRAM 被覆写成 tmux，而 KITTY_WINDOW_ID 会幸存，
+    // 所以这里必须不写 OSC（写了也会被 tmux 丢弃）
+    // tmux 与 screen 会丢弃裸 OSC，但会把 BEL 变成窗口提醒（window_bell_flag），
+    // 并按 visual-bell 的设置把 BEL 透传给外层终端，由外层终端弹出可点击的原生通知
+    const written: string[] = [];
+    const attempted: string[] = [];
+    let bells = 0;
+    const notifier = createNotifier({
+      config: notifyConfig,
+      env: { TMUX: "/private/tmp/tmux-501/default,32270,8", TERM_PROGRAM: "tmux", KITTY_WINDOW_ID: "1" },
+      interactive: true,
+      platform: "darwin",
+      writeSequence: (sequence) => written.push(sequence),
+      runCommand: async ({ bin }) => {
+        attempted.push(bin);
+        return true;
+      },
+      ringBell: () => {
+        bells++;
+      },
+    });
+
+    notifier.notify(request);
+    await drain();
+
+    expect(bells).toBe(1);
+    expect(written).toEqual([]);
+    expect(attempted).toEqual([]);
+  });
+
+  test("rings the terminal bell instead of spawning inside GNU screen", async () => {
+    const attempted: string[] = [];
+    let bells = 0;
+    const notifier = createNotifier({
+      config: notifyConfig,
+      env: { STY: "1234.pts-0.host" },
+      interactive: true,
+      platform: "darwin",
+      runCommand: async ({ bin }) => {
+        attempted.push(bin);
+        return true;
+      },
+      ringBell: () => {
+        bells++;
+      },
+    });
+
+    notifier.notify(request);
+    await drain();
+
+    expect(bells).toBe(1);
+    expect(attempted).toEqual([]);
+  });
+
+  test("falls back to the system notification chain inside tmux when the bell is disabled", async () => {
+    const written: string[] = [];
+    const attempted: string[] = [];
+    let bells = 0;
+    const notifier = createNotifier({
+      config: { ...notifyConfig, bell: false },
+      env: { TMUX: "/private/tmp/tmux-501/default,32270,8", TERM_PROGRAM: "tmux", KITTY_WINDOW_ID: "1" },
+      interactive: true,
+      platform: "darwin",
+      writeSequence: (sequence) => written.push(sequence),
+      runCommand: async ({ bin }) => {
+        attempted.push(bin);
+        return true;
+      },
+      ringBell: () => {
+        bells++;
+      },
+    });
+
+    notifier.notify(request);
+    await drain();
+
+    expect(bells).toBe(0);
+    expect(written).toEqual([]);
+    expect(attempted).toEqual(["terminal-notifier"]);
+  });
+
+  test("keeps using the system notification chain outside a multiplexer", async () => {
+    const attempted: string[] = [];
+    let bells = 0;
+    const notifier = createNotifier({
+      config: notifyConfig,
+      env: { TERM: "xterm-256color" },
+      interactive: true,
+      platform: "darwin",
+      runCommand: async ({ bin }) => {
+        attempted.push(bin);
+        return true;
+      },
+      ringBell: () => {
+        bells++;
+      },
+    });
+
+    notifier.notify(request);
+    await drain();
+
+    expect(attempted).toEqual(["terminal-notifier"]);
+    expect(bells).toBe(0);
   });
 });
 
