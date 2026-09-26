@@ -119,6 +119,18 @@ export type TerminalEnv = Record<string, string | undefined>;
 export type TerminalNotifyTarget = "kitty" | "osc777";
 
 /**
+ * 判断是否运行在终端多路复用器里
+ * tmux 与 screen 会丢弃裸 OSC，所以它们不能走 OSC 层；但两者都消费 BEL：
+ * tmux 把它变成窗口提醒（window_bell_flag），并按 visual-bell 的设置决定是否透传给外层终端，
+ * 外层终端（例如 iTerm2 的 bell 通知）收到后能弹出可点击的原生通知
+ * 这里只认 TMUX / STY：走 BEL 通道意味着放弃系统通知链，所以只有确定在多路复用器里才启用；
+ * TERM 里的 tmux-* / screen-* 只是「OSC 一定被丢弃」的证据，不足以证明有东西会消费这个 BEL
+ */
+function isMultiplexed(env: TerminalEnv): boolean {
+  return Boolean(env.TMUX || env.STY);
+}
+
+/**
  * 判断终端是否必须排除在 OSC 通知之外
  * tmux 与 screen 一定在这里命中：裸 OSC 会被它们直接丢弃（不是透传），而 tmux 3.3 起覆写
  * TERM_PROGRAM 却不清楚洗 KITTY_WINDOW_ID / ITERM_SESSION_ID，只看 TERM_PROGRAM 会误判成外层终端
@@ -127,8 +139,7 @@ export type TerminalNotifyTarget = "kitty" | "osc777";
 function isTerminalNotifyUnsupported(env: TerminalEnv): boolean {
   const term = env.TERM ?? "";
   return Boolean(
-    env.TMUX ||
-      env.STY ||
+    isMultiplexed(env) ||
       // Windows Terminal 的 OSC 777 默认关闭，且聚焦时会被抑制
       env.WT_SESSION ||
       env.TERM_PROGRAM === "tmux" ||
@@ -204,7 +215,7 @@ export interface NotifierOptions {
   platform?: NodeJS.Platform;
   /** 通知命令执行器，缺省用独立进程运行 */
   runCommand?: CommandRunner;
-  /** 系统通知全部失败且标准输出是交互式终端时写终端响铃，缺省写一个 BEL 到标准输出 */
+  /** 写终端响铃，缺省写一个 BEL 到标准输出；多路复用器里它是投递通道，其它情况下是系统通知全部失败后的兜底 */
   ringBell?: () => void;
   /** 时钟，缺省取系统时间 */
   now?: () => number;
@@ -233,6 +244,12 @@ export function createNotifier(options: NotifierOptions): GuardNotifier {
     notify(request) {
       if (!config.enabled || !allowAttempt()) return;
       if (interactive) {
+        // 多路复用器里 BEL 就是投递通道：不要走 OSC 层（会被丢弃）
+        // bell 关掉时不占用这条通道，继续走系统通知链，避免一个开关让安全插件彻底静默
+        if (config.bell && isMultiplexed(env)) {
+          ringBell();
+          return;
+        }
         const target = detectTerminalNotifyTarget(env);
         if (target) {
           // 终端自己就能显示通知时不再 spawn 系统通知进程，避免同一件事弹两次

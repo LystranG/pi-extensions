@@ -56,11 +56,12 @@ Delivery stops at the first layer that applies:
 
 | Order | Layer | Applies when |
 | --- | --- | --- |
-| 1 | Terminal notification (`OSC 99` on kitty, `OSC 777` on the others) | The terminal is known to render it |
-| 2 | System notification chain | Layer 1 does not apply |
-| 3 | Terminal bell | Every candidate in layer 2 failed and `bell` is enabled |
+| 1 | Terminal bell | Inside tmux or GNU screen and `bell` is enabled |
+| 2 | Terminal notification (`OSC 99` on kitty, `OSC 777` on the others) | The terminal is known to render it |
+| 3 | System notification chain | Neither layer above applies |
+| 4 | Terminal bell | Every candidate in layer 3 failed and `bell` is enabled |
 
-A layer 1 hit skips the system notification chain, so one confirmation never raises two notifications. The price is that a terminal escape sequence reports no failure, so the terminal list is a positive allowlist and anything unrecognised falls through to layer 2:
+Inside tmux or GNU screen the bell is the only channel that works: both multiplexers drop the OSC notifications, but a bell becomes a window alert in the status line and, unless `visual-bell` is on, is passed through to the outer terminal, which can raise a native notification you can click to get back to the session. Layers 1 and 2 skip the system notification chain, so one confirmation never raises two notifications. Outside a multiplexer the price of the OSC layer is that a terminal escape sequence reports no failure, so the terminal list is a positive allowlist and anything unrecognised falls through to the system chain:
 
 - Renders `OSC 99` or `OSC 777`: kitty, Ghostty, WezTerm, iTerm2, Warp, rxvt-unicode
 - Excluded: tmux and GNU screen drop these sequences instead of passing them through, Windows Terminal ships `OSC 777` disabled, and VS Code's xterm.js implements none of them; Apple Terminal and Alacritty are excluded for the same reason, and `TERM=dumb` declares no terminal capability at all
@@ -81,7 +82,7 @@ A layer 1 hit skips the system notification chain, so one confirmation never rai
 - `enabled` sends notifications, `DCG_PI_NOTIFY=off` disables them for one run
 - `includeCommand` appends the truncated command text to the notification body, which keeps that command in the notification center, so it is off by default. Notification text is stripped of control characters and semicolons before it reaches a terminal escape sequence, so command text cannot end that sequence early or inject another one
 - `minIntervalMs` is the minimum delay between two notifications, and `maxPerMinute` caps a burst of confirmations; both apply to every layer
-- `bell` writes a single terminal bell when no system notification was delivered on an interactive terminal
+- `bell` writes a terminal bell on an interactive terminal: that is the delivery mechanism inside tmux or GNU screen, and the last resort when no system notification was delivered anywhere else
 
 Notification commands are spawned as separate processes with an argument vector, never through a shell, and each failure falls back to the next candidate in the chain:
 
