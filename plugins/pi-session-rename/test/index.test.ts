@@ -590,6 +590,7 @@ function createExtensionHarness() {
   let sessionName: string | undefined;
 
   sessionRenameExtension({
+    registerCommand: () => undefined,
     on: (event: string, handler: (event: unknown, ctx: unknown) => unknown) => {
       handlers.set(event, handler);
       return () => handlers.delete(event);

@@ -1,42 +1,57 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+/** 注册首次自动命名与显式会话主线重命名 */
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildHeaderTransform } from "./adapters/index.ts";
 import { createSessionRenameController } from "./controller.ts";
-import { countUserMessages } from "./session-history.ts";
+import { buildRenameContext, countUserMessages } from "./session-history.ts";
 import { generateTitle } from "./title.ts";
 
-/** 注册首个用户 turn 开始后的后台 session 自动命名 */
+/** 通过独立模型请求生成标题，不向主对话注入消息 */
 export default function sessionRenameExtension(pi: ExtensionAPI): void {
-  let warningMessage: ((message: string) => void) | undefined;
+  /** 当前上下文的提示投递函数，只在请求仍有效时调用 */
+  let notify: ExtensionContext["ui"]["notify"] | undefined;
   /** 当前 session id；opencode 系 provider 依赖它做请求路由 */
   let sessionId: string | undefined;
 
   const controller = createSessionRenameController({
     getSessionName: () => pi.getSessionName(),
     setSessionName: (name) => pi.setSessionName(name),
-    warn: (message) => warningMessage?.(message),
+    warn: (message) => notify?.(message, "warning"),
+    info: (message) => notify?.(message, "info"),
     generateTitle: async (model, modelRegistry, candidate, signal) => {
-      return generateTitle(model, candidate.prompt, signal, (requestModel, context, options) => {
-        // 扩展自己发起的请求绕过了 Pi 主循环的请求头装配，provider 需要的私有头由适配器补齐
-        const transformHeaders = buildHeaderTransform(requestModel, sessionId);
-        return modelRegistry.complete(
-          requestModel,
-          context,
-          transformHeaders ? { ...options, transformHeaders } : options,
-        );
-      });
+      // 在请求开始时固定路由头，重试不能读到另一会话的标识
+      const transformHeaders = buildHeaderTransform(model, sessionId);
+      return generateTitle(
+        model,
+        candidate.prompt,
+        signal,
+        (requestModel, context, options) =>
+          modelRegistry.complete(requestModel, context, transformHeaders ? { ...options, transformHeaders } : options),
+        candidate.source,
+      );
+    },
+  });
+  pi.registerCommand("auto-rename", {
+    description: "Rename this session from its current conversation using the selected model",
+    handler: async (_args, ctx) => {
+      notify = (message, type) => ctx.ui.notify(message, type);
+      sessionId = ctx.sessionManager.getSessionId();
+      const prompt = buildRenameContext(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId());
+      controller.onManualRename(prompt, ctx.model, ctx.modelRegistry);
     },
   });
 
-  pi.on("session_start", (_event, ctx) => {
+  /** 会话替换或树跳转会使旧标题失效，普通新增消息不触发此重置 */
+  const onSessionContextChanged = (_event: unknown, ctx: ExtensionContext): void => {
     sessionId = ctx.sessionManager.getSessionId();
-    // 已经带着用户消息的会话（pi -r / pi -c 恢复、分叉）不再自动命名
     controller.onSessionStart({ existingUserMessages: countUserMessages(ctx.sessionManager.getEntries()) });
-  });
+  };
+  pi.on("session_start", onSessionContextChanged);
+  pi.on("session_tree", onSessionContextChanged);
 
   pi.on("input", (event) => controller.onInput(event));
 
   pi.on("before_agent_start", (event, ctx) => {
-    warningMessage = (message) => ctx.ui.notify(message, "warning");
+    notify = (message, type) => ctx.ui.notify(message, type);
     sessionId = ctx.sessionManager.getSessionId();
     controller.onBeforeAgentStart(event.prompt, ctx.model, ctx.modelRegistry);
   });
