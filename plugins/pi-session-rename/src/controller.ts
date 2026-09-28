@@ -1,3 +1,4 @@
+/** 协调首次自动命名与手动重命名，共用请求取消和结果提交保护 */
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext, InputEvent } from "@earendil-works/pi-coding-agent";
 import {
@@ -5,11 +6,14 @@ import {
   extractUserPrompt,
   isUserOriginatedInput,
   type TitleGenerationResult,
+  type TitleSource,
 } from "./title.ts";
 
 export interface RenameCandidate {
-  /** 首个用户提示中由用户自己书写的内容 */
+  /** 首条用户提示或当前会话主线的文本快照 */
   prompt: string;
+  /** 未指定时保持首句自动命名的输入契约 */
+  source?: TitleSource;
 }
 
 export interface SessionRenameControllerOptions {
@@ -19,6 +23,8 @@ export interface SessionRenameControllerOptions {
   setSessionName: (name: string) => void;
   /** 输出英文警告 */
   warn: (message: string) => void;
+  /** 手动命名的进度与完成提示 */
+  info?: (message: string) => void;
   /** 在独立请求中生成 session 名称 */
   generateTitle: (
     model: Model<Api>,
@@ -35,16 +41,16 @@ export interface SessionStartState {
 }
 
 /**
- * 管理首个用户提示的捕获、后台命名与重复触发抑制
- * 候选项在 before_agent_start 阶段读取，那里才能拿到 skill 与 prompt template 展开后的文本
- * 每个 session 只有第一条用户消息可以触发命名，恢复或分叉的会话完全不触发
- * 标题请求一旦发出就不再取消，所以首个 turn 失败或被中断时它仍可能完成命名
+ * 首次自动命名只捕获第一条可用用户提示，恢复会话不自动触发
+ * 显式命名可重复执行并覆盖已有名称，始终以最新请求为准
+ * 主对话中断不取消标题请求，会话替换、树跳转或新命名请求会使旧请求失效
  */
 export function createSessionRenameController(options: SessionRenameControllerOptions) {
   let candidate: RenameCandidate | undefined;
   /** 本次 session 的命名机会是否已经用掉；已有历史的会话在 session_start 时即视为用掉 */
   let renameConsumed = false;
   let userTurnPending = false;
+  /** 请求代次随显式命名或会话上下文替换递增，防止迟到结果提交 */
   let sessionGeneration = 0;
   let activeAbortController: AbortController | undefined;
   /** 命令展开前用户输入的原始文本，用于取回用户自己写下的命令参数 */
@@ -87,25 +93,27 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     startRename(model, modelRegistry);
   };
 
-  const startRename = (model: Model<Api>, modelRegistry: ExtensionContext["modelRegistry"]): void => {
-    if (renameConsumed || !candidate || options.getSessionName() !== undefined) return;
+  /** 共用请求链，只有手动入口允许覆盖已有名称 */
+  const startRename = (model: Model<Api>, modelRegistry: ExtensionContext["modelRegistry"], manual = false): void => {
+    if (!candidate || (!manual && (renameConsumed || options.getSessionName() !== undefined))) return;
     renameConsumed = true;
     const request = candidate;
     const requestGeneration = sessionGeneration;
     const abortController = new AbortController();
     activeAbortController = abortController;
+    if (manual) options.info?.("Generating session title...");
     void options
       .generateTitle(model, modelRegistry, request, abortController.signal)
       .then((result) => {
         if (
           abortController.signal.aborted ||
           requestGeneration !== sessionGeneration ||
-          options.getSessionName() !== undefined
-        ) {
+          (!manual && options.getSessionName() !== undefined)
+        )
           return;
-        }
         if (result.title) {
           options.setSessionName(result.title);
+          if (manual) options.info?.(`Session renamed to: ${result.title}`);
         } else if (result.lengthLimitExceeded) {
           options.warn("Session title generation stopped because the title exceeded the length limit.");
         } else if (result.error) {
@@ -113,7 +121,7 @@ export function createSessionRenameController(options: SessionRenameControllerOp
         }
       })
       .catch((error: unknown) => {
-        if (abortController.signal.aborted) return;
+        if (abortController.signal.aborted || requestGeneration !== sessionGeneration) return;
         const detail = error instanceof Error ? error.message : String(error);
         options.warn(`Session title generation failed: ${detail}`);
       })
@@ -122,18 +130,33 @@ export function createSessionRenameController(options: SessionRenameControllerOp
       });
   };
 
+  /** 显式命名不受会话历史、已有名称或首次自动命名机会的限制 */
+  const onManualRename = (
+    prompt: string | undefined,
+    model: Model<Api> | undefined,
+    modelRegistry: ExtensionContext["modelRegistry"],
+  ): void => {
+    invalidatePendingRename();
+    if (!prompt?.trim()) {
+      options.warn("Session title generation skipped because no conversation context is available.");
+      return;
+    }
+    if (!model) {
+      options.warn("Session title generation skipped because no model is available.");
+      return;
+    }
+    candidate = { prompt, source: "conversation" };
+    startRename(model, modelRegistry, true);
+  };
+
   /** session_start：重置状态，并让已有历史的会话从一开始就没有命名机会 */
   const onSessionStart = ({ existingUserMessages }: SessionStartState): void => {
-    sessionGeneration++;
-    activeAbortController?.abort();
-    activeAbortController = undefined;
-    candidate = undefined;
-    userTurnPending = false;
-    rawInputText = undefined;
+    invalidatePendingRename();
     renameConsumed = existingUserMessages > 0;
   };
 
-  const onSessionShutdown = (): void => {
+  /** 在访问任何 Pi 上下文前，用本地代次和取消信号使旧请求失效 */
+  const invalidatePendingRename = (): void => {
     sessionGeneration++;
     activeAbortController?.abort();
     activeAbortController = undefined;
@@ -142,5 +165,5 @@ export function createSessionRenameController(options: SessionRenameControllerOp
     rawInputText = undefined;
   };
 
-  return { onInput, onBeforeAgentStart, onSessionStart, onSessionShutdown };
+  return { onInput, onBeforeAgentStart, onManualRename, onSessionStart, onSessionShutdown: invalidatePendingRename };
 }
