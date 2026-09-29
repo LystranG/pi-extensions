@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import piGuardExtension, {
   confirmStdinInput,
   decideToolCall,
   ensureGuardConfig,
   type GuardConfig,
+  isSubagentChildProcess,
   loadGuardConfig,
   type NotifyRequest,
 } from "../src/index.ts";
@@ -373,3 +375,60 @@ describe("configuration", () => {
     expect(result.deny).toBe(false);
   });
 });
+
+describe("subagent sessions", () => {
+  test("reads the marker pi-subagents writes into a runner process", () => {
+    expect(isSubagentChildProcess({ PI_SUBAGENT_CHILD: "1" })).toBe(true);
+    expect(isSubagentChildProcess({ PI_SUBAGENT_CHILD: "0" })).toBe(false);
+    expect(isSubagentChildProcess({})).toBe(false);
+  });
+
+  test("registers nothing inside a subagent child session", () => {
+    const guard = createGuardHarness();
+    withSubagentChildMarker(() => piGuardExtension(guard.api));
+    expect(guard.events).toEqual([]);
+  });
+
+  test("registers the tool guard in a normal session", () => {
+    const directory = mkdtempSync(join(tmpdir(), "pi-guard-"));
+    const configPath = join(directory, "guard.json");
+    writeFileSync(configPath, JSON.stringify({ defaultMode: "confirm" }));
+    const previous = process.env.PI_GUARD_CONFIG;
+    process.env.PI_GUARD_CONFIG = configPath;
+    try {
+      const guard = createGuardHarness();
+      piGuardExtension(guard.api);
+      expect(guard.events).toEqual(["tool_call"]);
+    } finally {
+      if (previous === undefined) delete process.env.PI_GUARD_CONFIG;
+      else process.env.PI_GUARD_CONFIG = previous;
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+/** 用假的 ExtensionAPI 驱动扩展入口，记录它注册过的事件名 */
+function createGuardHarness(): { api: ExtensionAPI; events: string[] } {
+  const events: string[] = [];
+  return {
+    events,
+    api: {
+      on: (event: string) => {
+        events.push(event);
+        return () => undefined;
+      },
+    } as unknown as ExtensionAPI,
+  };
+}
+
+/** 带上子代理进程标记运行一次，结束后恢复原值 */
+function withSubagentChildMarker(run: () => void): void {
+  const previous = process.env.PI_SUBAGENT_CHILD;
+  process.env.PI_SUBAGENT_CHILD = "1";
+  try {
+    run();
+  } finally {
+    if (previous === undefined) delete process.env.PI_SUBAGENT_CHILD;
+    else process.env.PI_SUBAGENT_CHILD = previous;
+  }
+}

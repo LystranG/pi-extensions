@@ -97,3 +97,5 @@ Notification commands are spawned as separate processes with an argument vector,
 ## Boundaries
 
 This is pre-execution protection for Pi `bash` tool calls, not an operating-system sandbox. It does not cover other custom tools, shells started directly by the user, or scripts that bypass tool calls; use Pi inside a container or OS sandbox when stronger isolation is required
+
+Pi Guard registers nothing inside a subagent session hosted by a `pi-subagents` background runner, which sets `PI_SUBAGENT_CHILD=1` before loading extensions. Such a session has no confirmation UI, so every command dcg classifies as dangerous would be denied outright instead of confirmed, which breaks unattended subagent work. Foreground subagents run inside the parent process and never load ambient extensions, so they are unaffected too; the only way Pi Guard still applies inside a subagent is an agent that lists it explicitly in `extensions` or `subagentOnlyExtensions` while running as a foreground child
