@@ -3,6 +3,7 @@ import { ensureGuardConfig, loadGuardConfig } from "./config.ts";
 import { createDcgChecker } from "./dcg.ts";
 import { createNotifier } from "./notify.ts";
 import { confirmStdinInput, decideCommand, summarizeCommand } from "./policy.ts";
+import { isSubagentChildProcess } from "./subagents.ts";
 import { extractToolRequest } from "./tools.ts";
 import type { GuardConfig, GuardContext } from "./types.ts";
 
@@ -12,11 +13,14 @@ export * from "./notify.ts";
 export * from "./policy.ts";
 export { decideCommand as decideToolCall } from "./policy.ts";
 export * from "./rules.ts";
+export * from "./subagents.ts";
 export * from "./tools.ts";
 export * from "./types.ts";
 
 /** 注册 Pi Guard 的工具调用保护 */
 export default function piGuardExtension(pi: ExtensionAPI): void {
+  // 子代理会话没有确认界面，注册 guard 只会把危险命令直接拒绝，因此 pi-guard 不在子代理里生效
+  if (isSubagentChildProcess()) return;
   let config: GuardConfig;
   try {
     ensureGuardConfig();
