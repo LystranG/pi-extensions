@@ -8,12 +8,31 @@ interface PackageManifest {
   engines?: { node?: string };
   files?: string[];
   dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
   pi?: { extensions?: string[] };
 }
 
 const root = process.cwd();
 const shouldPack = process.argv.includes("--pack");
 const workspaceRoots = ["plugins", "packages"];
+
+/**
+ * Pi 宿主注入的包清单，与 Pi 的 HOST_PROVIDED_EXTENSION_PACKAGES 保持一致
+ * 它们由 Pi 的模块映射提供给扩展，写进 dependencies 会安装物理副本并绕过映射
+ */
+const hostProvidedPackages = [
+  "@earendil-works/pi-agent-core",
+  "@earendil-works/pi-ai",
+  "@earendil-works/pi-coding-agent",
+  "@earendil-works/pi-tui",
+  "@mariozechner/pi-agent-core",
+  "@mariozechner/pi-ai",
+  "@mariozechner/pi-coding-agent",
+  "@mariozechner/pi-tui",
+  "@sinclair/typebox",
+  "typebox",
+];
 
 function workspaceDirectories(): string[] {
   return workspaceRoots.flatMap((workspaceRoot) => {
@@ -45,10 +64,14 @@ function validatePlugin(directory: string, manifest: PackageManifest): string[] 
   if (!manifest.files?.includes("src")) errors.push(`${location}: files must include src`);
   if (!existsSync(join(directory, "src", "index.ts"))) errors.push(`${location}: src/index.ts is missing`);
 
-  const piPackages = ["@earendil-works/pi-coding-agent", "@mariozechner/pi-coding-agent"];
-  for (const packageName of piPackages) {
+  for (const packageName of hostProvidedPackages) {
     if (manifest.dependencies?.[packageName]) {
-      errors.push(`${location}: ${packageName} must be declared as both a peerDependency and devDependency`);
+      errors.push(
+        `${location}: ${packageName} is provided by the Pi host, so it must not be a dependency; declare it in peerDependencies and devDependencies`,
+      );
+    }
+    if (manifest.peerDependencies?.[packageName] && !manifest.devDependencies?.[packageName]) {
+      errors.push(`${location}: ${packageName} is a peerDependency, so it must also be a devDependency`);
     }
   }
 
